@@ -37,7 +37,8 @@ public class JSONHelper
 			objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
 
 			retval = objectMapper.writeValueAsString(object);
-		} catch (Exception e)
+		}
+		catch (Exception e)
 		{
 			LOG.error("", e);
 		}
@@ -53,10 +54,12 @@ public class JSONHelper
 			objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
 
 			retval = objectMapper.readValue(data, type);
-		} catch (Exception e)
+		}
+		catch (Exception e)
 		{
 			LOG.error("", e);
 		}
 		return retval;
 	}
+
 }
