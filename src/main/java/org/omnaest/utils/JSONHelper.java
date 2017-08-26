@@ -18,9 +18,12 @@
 */
 package org.omnaest.utils;
 
+import java.util.function.Function;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 
@@ -40,12 +43,42 @@ public class JSONHelper
 		}
 		catch (Exception e)
 		{
-			LOG.error("", e);
+			LOG.error("Exception serializing object into json" + object, e);
 		}
 		return retval;
 	}
 
 	public static <T> T readFromString(String data, Class<T> type)
+	{
+		return readJson((objectMapper) ->
+		{
+			try
+			{
+				return objectMapper.readValue(data, type);
+			}
+			catch (Exception e)
+			{
+				throw new RuntimeException(e);
+			}
+		});
+	}
+
+	public static <T> T readFromString(String data, TypeReference<T> typeReference)
+	{
+		return readJson((objectMapper) ->
+		{
+			try
+			{
+				return objectMapper.readValue(data, typeReference);
+			}
+			catch (Exception e)
+			{
+				throw new RuntimeException(e);
+			}
+		});
+	}
+
+	private static <T> T readJson(Function<ObjectMapper, T> supplier)
 	{
 		T retval = null;
 		try
@@ -53,11 +86,11 @@ public class JSONHelper
 			ObjectMapper objectMapper = new ObjectMapper();
 			objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
 
-			retval = objectMapper.readValue(data, type);
+			retval = supplier.apply(objectMapper);
 		}
 		catch (Exception e)
 		{
-			LOG.error("", e);
+			LOG.error("Exception deserializing into json", e);
 		}
 		return retval;
 	}
