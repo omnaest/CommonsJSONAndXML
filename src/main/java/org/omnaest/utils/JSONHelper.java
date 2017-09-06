@@ -18,6 +18,7 @@
 */
 package org.omnaest.utils;
 
+import java.util.Map;
 import java.util.function.Function;
 
 import org.slf4j.Logger;
@@ -93,6 +94,32 @@ public class JSONHelper
 			LOG.error("Exception deserializing into json", e);
 		}
 		return retval;
+	}
+
+	/**
+	 * Uses {@link ObjectMapper} to map from one object to another
+	 *
+	 * @see #toMap(Object)
+	 * @param object
+	 * @param type
+	 * @return
+	 */
+	public static <O, T> T toObjectWithType(O object, Class<T> type)
+	{
+		return new ObjectMapper().convertValue(object, type);
+	}
+
+	/**
+	 * Returns a nested {@link Map} generated from the given bean
+	 *
+	 * @see #toObjectWithType(Object, Class)
+	 * @param object
+	 * @return
+	 */
+	@SuppressWarnings("unchecked")
+	public static <O> Map<String, Object> toMap(O object)
+	{
+		return toObjectWithType(object, Map.class);
 	}
 
 }
