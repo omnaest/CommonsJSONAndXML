@@ -72,24 +72,27 @@ public class XMLHelper
 	{
 		T retval = null;
 
-		try
+		if (xml != null && !xml.isEmpty())
 		{
-			SAXParserFactory parserFactory = SAXParserFactory.newInstance();
-			parserFactory.setFeature("http://xml.org/sax/features/external-general-entities", false);
-			parserFactory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
-			parserFactory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
+			try
+			{
+				SAXParserFactory parserFactory = SAXParserFactory.newInstance();
+				parserFactory.setFeature("http://xml.org/sax/features/external-general-entities", false);
+				parserFactory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+				parserFactory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
 
-			Source xmlSource = new SAXSource(	parserFactory.newSAXParser()
-															.getXMLReader(),
-												new InputSource(new StringReader(xml)));
+				Source xmlSource = new SAXSource(	parserFactory.newSAXParser()
+																.getXMLReader(),
+													new InputSource(new StringReader(xml)));
 
-			JAXBContext jaxbContext = JAXBContext.newInstance(type);
-			Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
-			retval = (T) unmarshaller.unmarshal(xmlSource);
-		}
-		catch (Exception e)
-		{
-			throw new ParseRuntimException(e);
+				JAXBContext jaxbContext = JAXBContext.newInstance(type);
+				Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
+				retval = (T) unmarshaller.unmarshal(xmlSource);
+			}
+			catch (Exception e)
+			{
+				throw new ParseRuntimException(e);
+			}
 		}
 
 		return retval;
