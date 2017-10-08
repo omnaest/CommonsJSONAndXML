@@ -20,6 +20,7 @@ package org.omnaest.utils;
 
 import java.io.StringReader;
 import java.io.StringWriter;
+import java.util.function.UnaryOperator;
 
 import javax.xml.bind.JAXBContext;
 import javax.xml.bind.Marshaller;
@@ -28,6 +29,8 @@ import javax.xml.parsers.SAXParserFactory;
 import javax.xml.transform.Source;
 import javax.xml.transform.sax.SAXSource;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.xml.sax.InputSource;
 
 /**
@@ -39,6 +42,8 @@ import org.xml.sax.InputSource;
  */
 public class XMLHelper
 {
+	private static final Logger LOG = LoggerFactory.getLogger(XMLHelper.class);
+
 	public static class ParseRuntimException extends RuntimeException
 	{
 		private static final long serialVersionUID = -2172248039344150351L;
@@ -88,14 +93,90 @@ public class XMLHelper
 				JAXBContext jaxbContext = JAXBContext.newInstance(type);
 				Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
 				retval = (T) unmarshaller.unmarshal(xmlSource);
-			}
-			catch (Exception e)
+			} catch (Exception e)
 			{
 				throw new ParseRuntimException(e);
 			}
 		}
 
 		return retval;
+	}
+
+	/**
+	 * Builder to serialize JAXB xml objects
+	 * 
+	 * @see #serialize(Object)
+	 * @author omnaest
+	 */
+	public static interface Serializer
+	{
+		public String serialize(Object model);
+
+		public Serializer withCompactPrint();
+
+		public Serializer withPrettyPrint();
+
+		public Serializer withoutHeader();
+
+		public Serializer withHeader();
+	}
+
+	/**
+	 * @see Serializer
+	 * @return
+	 */
+	public static Serializer serializer()
+	{
+		return new Serializer()
+		{
+			private boolean	renderHeader	= true;
+			private boolean	prettyPrint		= true;
+
+			@Override
+			public Serializer withHeader()
+			{
+				this.renderHeader = true;
+				return this;
+			}
+
+			@Override
+			public Serializer withoutHeader()
+			{
+				this.renderHeader = false;
+				return this;
+			}
+
+			@Override
+			public Serializer withPrettyPrint()
+			{
+				this.prettyPrint = true;
+				return this;
+			}
+
+			@Override
+			public Serializer withCompactPrint()
+			{
+				this.prettyPrint = false;
+				return this;
+			}
+
+			@Override
+			public String serialize(Object model)
+			{
+				return XMLHelper.serialize(model, (UnaryOperator<Marshaller>) t ->
+				{
+					try
+					{
+						t.setProperty(Marshaller.JAXB_FRAGMENT, !this.renderHeader);
+						t.setProperty(Marshaller.JAXB_FORMATTED_OUTPUT, this.prettyPrint);
+					} catch (Exception e)
+					{
+						LOG.error("", e);
+					}
+					return t;
+				});
+			}
+		};
 	}
 
 	/**
@@ -106,6 +187,18 @@ public class XMLHelper
 	 */
 	public static String serialize(Object model)
 	{
+		UnaryOperator<Marshaller> modifier = null;
+		return serialize(model, modifier);
+	}
+
+	/**
+	 * @see #serialize(Object)
+	 * @param model
+	 * @param modifier
+	 * @return
+	 */
+	public static String serialize(Object model, UnaryOperator<Marshaller> modifier)
+	{
 		String retval = null;
 
 		try
@@ -114,12 +207,21 @@ public class XMLHelper
 			JAXBContext jaxbContext = JAXBContext.newInstance(model.getClass());
 			Marshaller jaxbMarshaller = jaxbContext.createMarshaller();
 			jaxbMarshaller.setProperty(Marshaller.JAXB_FORMATTED_OUTPUT, true);
+
+			if (modifier != null)
+			{
+				Marshaller modifiedJaxbMarshaller = modifier.apply(jaxbMarshaller);
+				if (modifiedJaxbMarshaller != null)
+				{
+					jaxbMarshaller = modifiedJaxbMarshaller;
+				}
+			}
+
 			jaxbMarshaller.marshal(model, writer);
 			writer.close();
 			retval = writer.toString();
 
-		}
-		catch (Exception e)
+		} catch (Exception e)
 		{
 			throw new SerializeRuntimException(e);
 		}
