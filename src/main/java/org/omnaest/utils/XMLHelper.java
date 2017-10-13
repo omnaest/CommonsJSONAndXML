@@ -20,7 +20,12 @@ package org.omnaest.utils;
 
 import java.io.StringReader;
 import java.io.StringWriter;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.function.UnaryOperator;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import javax.xml.bind.JAXBContext;
 import javax.xml.bind.Marshaller;
@@ -119,6 +124,8 @@ public class XMLHelper
 		public Serializer withoutHeader();
 
 		public Serializer withHeader();
+
+		public Serializer withRootTypes(Class<?> type);
 	}
 
 	/**
@@ -129,8 +136,9 @@ public class XMLHelper
 	{
 		return new Serializer()
 		{
-			private boolean	renderHeader	= true;
-			private boolean	prettyPrint		= true;
+			private boolean			renderHeader	= true;
+			private boolean			prettyPrint		= true;
+			private List<Class<?>>	rootTypes		= new ArrayList<>();
 
 			@Override
 			public Serializer withHeader()
@@ -169,12 +177,20 @@ public class XMLHelper
 					{
 						t.setProperty(Marshaller.JAXB_FRAGMENT, !this.renderHeader);
 						t.setProperty(Marshaller.JAXB_FORMATTED_OUTPUT, this.prettyPrint);
+
 					} catch (Exception e)
 					{
 						LOG.error("", e);
 					}
 					return t;
-				});
+				}, this.rootTypes.toArray(new Class[0]));
+			}
+
+			@Override
+			public Serializer withRootTypes(Class<?> type)
+			{
+				this.rootTypes.add(type);
+				return this;
 			}
 		};
 	}
@@ -197,14 +213,17 @@ public class XMLHelper
 	 * @param modifier
 	 * @return
 	 */
-	public static String serialize(Object model, UnaryOperator<Marshaller> modifier)
+	public static String serialize(Object model, UnaryOperator<Marshaller> modifier, Class<?>... rootTypes)
 	{
 		String retval = null;
 
 		try
 		{
 			StringWriter writer = new StringWriter();
-			JAXBContext jaxbContext = JAXBContext.newInstance(model.getClass());
+			JAXBContext jaxbContext = JAXBContext.newInstance(Stream.concat(Stream.of(model.getClass()), Arrays	.asList(rootTypes)
+																												.stream())
+																	.collect(Collectors.toList())
+																	.toArray(new Class[0]));
 			Marshaller jaxbMarshaller = jaxbContext.createMarshaller();
 			jaxbMarshaller.setProperty(Marshaller.JAXB_FORMATTED_OUTPUT, true);
 
