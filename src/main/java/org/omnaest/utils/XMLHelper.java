@@ -28,6 +28,7 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import javax.xml.bind.JAXBContext;
+import javax.xml.bind.JAXBElement;
 import javax.xml.bind.Marshaller;
 import javax.xml.bind.Unmarshaller;
 import javax.xml.parsers.SAXParserFactory;
@@ -97,7 +98,16 @@ public class XMLHelper
 
 				JAXBContext jaxbContext = JAXBContext.newInstance(type);
 				Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
-				retval = (T) unmarshaller.unmarshal(xmlSource);
+
+				if (JAXBElement.class.isAssignableFrom(type))
+				{
+					retval = (T) unmarshaller.unmarshal(xmlSource, Object.class);
+				}
+				else
+				{
+					retval = (T) unmarshaller.unmarshal(xmlSource);
+				}
+
 			} catch (Exception e)
 			{
 				throw new ParseRuntimException(e);
@@ -237,6 +247,7 @@ public class XMLHelper
 			}
 
 			jaxbMarshaller.marshal(model, writer);
+
 			writer.close();
 			retval = writer.toString();
 
