@@ -41,8 +41,7 @@ public class JSONHelper
 			objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
 
 			retval = objectMapper.writeValueAsString(object);
-		}
-		catch (Exception e)
+		} catch (Exception e)
 		{
 			LOG.error("Exception serializing object into json" + object, e);
 		}
@@ -56,8 +55,7 @@ public class JSONHelper
 			try
 			{
 				return objectMapper.readValue(data, type);
-			}
-			catch (Exception e)
+			} catch (Exception e)
 			{
 				throw new RuntimeException(e);
 			}
@@ -71,8 +69,7 @@ public class JSONHelper
 			try
 			{
 				return objectMapper.readValue(data, typeReference);
-			}
-			catch (Exception e)
+			} catch (Exception e)
 			{
 				throw new RuntimeException(e);
 			}
@@ -88,8 +85,7 @@ public class JSONHelper
 			objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
 
 			retval = supplier.apply(objectMapper);
-		}
-		catch (Exception e)
+		} catch (Exception e)
 		{
 			LOG.error("Exception deserializing into json", e);
 		}
@@ -122,4 +118,57 @@ public class JSONHelper
 		return toObjectWithType(object, Map.class);
 	}
 
+	/**
+	 * {@link Function} which does use {@link JSONHelper#prettyPrint(Object)}
+	 * 
+	 * @author omnaest
+	 * @param <T>
+	 */
+	public static interface JsonSerializer<T> extends Function<T, String>
+	{
+	}
+
+	/**
+	 * {@link Function} that does use {@link JSONHelper#readFromString(String, Class)}
+	 * 
+	 * @author omnaest
+	 * @param <T>
+	 */
+	public static interface JsonDeserializer<T> extends Function<String, T>
+	{
+	}
+
+	/**
+	 * @see JsonSerializer
+	 * @param type
+	 * @return
+	 */
+	public static <T> JsonSerializer<T> serializer(Class<T> type)
+	{
+		return new JsonSerializer<T>()
+		{
+			@Override
+			public String apply(T object)
+			{
+				return JSONHelper.prettyPrint(object);
+			}
+		};
+	}
+
+	/**
+	 * @see JsonDeserializer
+	 * @param type
+	 * @return
+	 */
+	public static <T> JsonDeserializer<T> deserializer(Class<T> type)
+	{
+		return new JsonDeserializer<T>()
+		{
+			@Override
+			public T apply(String data)
+			{
+				return JSONHelper.readFromString(data, type);
+			}
+		};
+	}
 }
