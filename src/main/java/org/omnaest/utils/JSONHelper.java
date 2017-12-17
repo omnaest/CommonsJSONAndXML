@@ -88,6 +88,7 @@ public class JSONHelper
 		} catch (Exception e)
 		{
 			LOG.error("Exception deserializing into json", e);
+			throw new IllegalStateException(e);
 		}
 		return retval;
 	}
