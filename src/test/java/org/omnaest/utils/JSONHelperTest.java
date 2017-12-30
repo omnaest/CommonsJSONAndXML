@@ -19,6 +19,7 @@
 package org.omnaest.utils;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 
 import java.util.Map;
 
@@ -29,36 +30,44 @@ import com.fasterxml.jackson.annotation.JsonCreator.Mode;
 
 public class JSONHelperTest
 {
-	protected static class Domain
-	{
-		private String field1;
+    protected static class Domain
+    {
+        private String field1;
 
-		@JsonCreator(mode = Mode.PROPERTIES)
-		public Domain(String field1)
-		{
-			super();
-			this.field1 = field1;
-		}
+        @JsonCreator(mode = Mode.PROPERTIES)
+        public Domain(String field1)
+        {
+            super();
+            this.field1 = field1;
+        }
 
-		public String getField1()
-		{
-			return this.field1;
-		}
+        public String getField1()
+        {
+            return this.field1;
+        }
 
-		@Override
-		public String toString()
-		{
-			return "Domain [field1=" + this.field1 + "]";
-		}
+        @Override
+        public String toString()
+        {
+            return "Domain [field1=" + this.field1 + "]";
+        }
 
-	}
+    }
 
-	@Test
-	public void testToMapO() throws Exception
-	{
-		Map<String, Object> map = JSONHelper.toMap(new Domain("value1"));
-		Domain domain = JSONHelper.toObjectWithType(map, Domain.class);
-		assertEquals("value1", domain.getField1());
-	}
+    @Test
+    public void testToMapO() throws Exception
+    {
+        Map<String, Object> map = JSONHelper.toMap(new Domain("value1"));
+        Domain domain = JSONHelper.toObjectWithType(map, Domain.class);
+        assertEquals("value1", domain.getField1());
+    }
+
+    @Test
+    public void testClone() throws Exception
+    {
+        Domain clone = JSONHelper.clone(new Domain("value1"));
+        assertNotNull(clone);
+        assertEquals("value1", clone.getField1());
+    }
 
 }
