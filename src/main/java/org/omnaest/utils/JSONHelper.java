@@ -240,7 +240,7 @@ public class JSONHelper
      * @param type
      * @return
      */
-    public static <T> JsonSerializer<T> serializer(Class<T> type)
+    public static <T> JsonSerializer<T> serializer(Class<? super T> type)
     {
         return new JsonSerializer<T>()
         {
@@ -257,14 +257,15 @@ public class JSONHelper
      * @param type
      * @return
      */
-    public static <T> JsonDeserializer<T> deserializer(Class<T> type)
+    public static <T> JsonDeserializer<T> deserializer(Class<? super T> type)
     {
         return new JsonDeserializer<T>()
         {
+            @SuppressWarnings("unchecked")
             @Override
             public T apply(String data)
             {
-                return JSONHelper.readFromString(data, type);
+                return data != null ? (T) JSONHelper.readFromString(data, type) : null;
             }
         };
     }
