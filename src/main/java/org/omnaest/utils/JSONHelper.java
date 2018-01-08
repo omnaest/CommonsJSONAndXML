@@ -147,7 +147,7 @@ public class JSONHelper
         {
             try
             {
-                return objectMapper.readValue(data, type);
+                return data != null ? objectMapper.readValue(data, type) : null;
             }
             catch (Exception e)
             {
