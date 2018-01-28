@@ -203,6 +203,17 @@ public class JSONHelper
     }
 
     /**
+     * Returns a {@link Function} which maps from an object to a bean of the given {@link Class} type
+     * 
+     * @param type
+     * @return
+     */
+    public static <O, T> Function<O, T> toObjectWithTypeMapper(Class<T> type)
+    {
+        return object -> toObjectWithType(object, type);
+    }
+
+    /**
      * Returns a nested {@link Map} generated from the given bean
      *
      * @see #toObjectWithType(Object, Class)

@@ -21,12 +21,13 @@ package org.omnaest.utils;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 
+import java.util.HashMap;
 import java.util.Map;
 
 import org.junit.Test;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonCreator.Mode;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 public class JSONHelperTest
 {
@@ -34,8 +35,8 @@ public class JSONHelperTest
     {
         private String field1;
 
-        @JsonCreator(mode = Mode.PROPERTIES)
-        public Domain(String field1)
+        @JsonCreator
+        public Domain(@JsonProperty("field1") String field1)
         {
             super();
             this.field1 = field1;
@@ -68,6 +69,17 @@ public class JSONHelperTest
         Domain clone = JSONHelper.clone(new Domain("value1"));
         assertNotNull(clone);
         assertEquals("value1", clone.getField1());
+    }
+
+    @Test
+    public void testToObjectWithTypeMapper() throws Exception
+    {
+        Map<String, String> map = new HashMap<>();
+        map.put("field1", "value1");
+        Domain domain = JSONHelper.toObjectWithTypeMapper(Domain.class)
+                                  .apply(map);
+
+        assertEquals("value1", domain.getField1());
     }
 
 }
