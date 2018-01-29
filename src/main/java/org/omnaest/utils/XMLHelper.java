@@ -18,6 +18,7 @@
 */
 package org.omnaest.utils;
 
+import java.io.Reader;
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.util.ArrayList;
@@ -35,9 +36,11 @@ import javax.xml.parsers.SAXParserFactory;
 import javax.xml.transform.Source;
 import javax.xml.transform.sax.SAXSource;
 
+import org.omnaest.utils.filter.XMLNameSpaceFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.xml.sax.InputSource;
+import org.xml.sax.XMLReader;
 
 /**
  * Helper class for parsing and serializing xml content
@@ -48,220 +51,308 @@ import org.xml.sax.InputSource;
  */
 public class XMLHelper
 {
-	private static final Logger LOG = LoggerFactory.getLogger(XMLHelper.class);
+    private static final Logger LOG = LoggerFactory.getLogger(XMLHelper.class);
 
-	public static class ParseRuntimException extends RuntimeException
-	{
-		private static final long serialVersionUID = -2172248039344150351L;
+    public static class ParseRuntimException extends RuntimeException
+    {
+        private static final long serialVersionUID = -2172248039344150351L;
 
-		public ParseRuntimException(Exception e)
-		{
-			super("Exception when parsing xml", e);
-		}
-	}
+        public ParseRuntimException(Exception e)
+        {
+            super("Exception when parsing xml", e);
+        }
+    }
 
-	public static class SerializeRuntimException extends RuntimeException
-	{
-		private static final long serialVersionUID = -2172223439344150351L;
+    public static class SerializeRuntimException extends RuntimeException
+    {
+        private static final long serialVersionUID = -2172223439344150351L;
 
-		public SerializeRuntimException(Exception e)
-		{
-			super("Exception serializing xml object", e);
-		}
+        public SerializeRuntimException(Exception e)
+        {
+            super("Exception serializing xml object", e);
+        }
 
-	}
+    }
 
-	/**
-	 * Parses the given xml string into the given {@link Class} type
-	 *
-	 * @param xml
-	 * @param type
-	 * @return
-	 */
-	@SuppressWarnings("unchecked")
-	public static <T> T parse(String xml, Class<T> type)
-	{
-		T retval = null;
+    public static interface XMLParser
+    {
+        public XMLParserLoaded from(String xml);
 
-		if (xml != null && !xml.isEmpty())
-		{
-			try
-			{
-				SAXParserFactory parserFactory = SAXParserFactory.newInstance();
-				parserFactory.setFeature("http://xml.org/sax/features/external-general-entities", false);
-				parserFactory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
-				parserFactory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
+        public XMLParserLoaded from(Reader reader);
 
-				Source xmlSource = new SAXSource(	parserFactory.newSAXParser()
-																.getXMLReader(),
-													new InputSource(new StringReader(xml)));
+    }
 
-				JAXBContext jaxbContext = JAXBContext.newInstance(type);
-				Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
+    public static interface XMLParserLoaded
+    {
+        public <T> T into(Class<T> type);
 
-				if (JAXBElement.class.isAssignableFrom(type))
-				{
-					retval = (T) unmarshaller.unmarshal(xmlSource, Object.class);
-				}
-				else
-				{
-					retval = (T) unmarshaller.unmarshal(xmlSource);
-				}
+        public XMLParserLoaded enforceNamespace(String namespace);
 
-			} catch (Exception e)
-			{
-				throw new ParseRuntimException(e);
-			}
-		}
+        XMLParserLoaded useNamespacePrefixes(boolean namespacePrefixes);
 
-		return retval;
-	}
+        XMLParserLoaded useNamespaces(boolean namespaces);
+    }
 
-	/**
-	 * Builder to serialize JAXB xml objects
-	 * 
-	 * @see #serialize(Object)
-	 * @author omnaest
-	 */
-	public static interface Serializer
-	{
-		public String serialize(Object model);
+    public static XMLParser parse()
+    {
+        return new XMLParser()
+        {
 
-		public Serializer withCompactPrint();
+            @Override
+            public XMLParserLoaded from(String xml)
+            {
+                return this.from(xml != null && !xml.isEmpty() ? new StringReader(xml) : null);
+            }
 
-		public Serializer withPrettyPrint();
+            @Override
+            public XMLParserLoaded from(Reader reader)
+            {
+                return new XMLParserLoaded()
+                {
+                    private XMLNameSpaceFilter nameSpaceFilter;
+                    private boolean            namespaces        = true;
+                    private boolean            namespacePrefixes = true;
 
-		public Serializer withoutHeader();
+                    @Override
+                    public XMLParserLoaded enforceNamespace(String namespace)
+                    {
+                        this.nameSpaceFilter = new XMLNameSpaceFilter(namespace);
+                        return this;
+                    }
 
-		public Serializer withHeader();
+                    @Override
+                    public XMLParserLoaded useNamespaces(boolean namespaces)
+                    {
+                        this.namespaces = namespaces;
+                        return this;
+                    }
 
-		public Serializer withRootTypes(Class<?> type);
-	}
+                    @Override
+                    public XMLParserLoaded useNamespacePrefixes(boolean namespacePrefixes)
+                    {
+                        this.namespacePrefixes = namespacePrefixes;
+                        return this;
+                    }
 
-	/**
-	 * @see Serializer
-	 * @return
-	 */
-	public static Serializer serializer()
-	{
-		return new Serializer()
-		{
-			private boolean			renderHeader	= true;
-			private boolean			prettyPrint		= true;
-			private List<Class<?>>	rootTypes		= new ArrayList<>();
+                    @SuppressWarnings("unchecked")
+                    @Override
+                    public <T> T into(Class<T> type)
+                    {
+                        T retval = null;
 
-			@Override
-			public Serializer withHeader()
-			{
-				this.renderHeader = true;
-				return this;
-			}
+                        if (reader != null)
+                        {
+                            try
+                            {
+                                SAXParserFactory parserFactory = SAXParserFactory.newInstance();
+                                parserFactory.setFeature("http://xml.org/sax/features/external-general-entities", false);
+                                parserFactory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+                                parserFactory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
 
-			@Override
-			public Serializer withoutHeader()
-			{
-				this.renderHeader = false;
-				return this;
-			}
+                                XMLReader xmlReader = parserFactory.newSAXParser()
+                                                                   .getXMLReader();
+                                xmlReader.setFeature("http://xml.org/sax/features/namespaces", this.namespaces);
+                                xmlReader.setFeature("http://xml.org/sax/features/namespace-prefixes", this.namespacePrefixes);
 
-			@Override
-			public Serializer withPrettyPrint()
-			{
-				this.prettyPrint = true;
-				return this;
-			}
+                                Source xmlSource;
+                                if (this.nameSpaceFilter != null)
+                                {
+                                    xmlSource = new SAXSource(this.nameSpaceFilter, new InputSource(reader));
+                                    this.nameSpaceFilter.setParent(xmlReader);
 
-			@Override
-			public Serializer withCompactPrint()
-			{
-				this.prettyPrint = false;
-				return this;
-			}
+                                }
+                                else
+                                {
+                                    xmlSource = new SAXSource(xmlReader, new InputSource(reader));
+                                }
 
-			@Override
-			public String serialize(Object model)
-			{
-				return XMLHelper.serialize(model, (UnaryOperator<Marshaller>) t ->
-				{
-					try
-					{
-						t.setProperty(Marshaller.JAXB_FRAGMENT, !this.renderHeader);
-						t.setProperty(Marshaller.JAXB_FORMATTED_OUTPUT, this.prettyPrint);
+                                JAXBContext jaxbContext = JAXBContext.newInstance(type);
+                                Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
 
-					} catch (Exception e)
-					{
-						LOG.error("", e);
-					}
-					return t;
-				}, this.rootTypes.toArray(new Class[0]));
-			}
+                                if (JAXBElement.class.isAssignableFrom(type))
+                                {
+                                    retval = (T) unmarshaller.unmarshal(xmlSource, Object.class);
+                                }
+                                else
+                                {
+                                    retval = (T) unmarshaller.unmarshal(xmlSource);
+                                }
 
-			@Override
-			public Serializer withRootTypes(Class<?> type)
-			{
-				this.rootTypes.add(type);
-				return this;
-			}
-		};
-	}
+                            }
+                            catch (Exception e)
+                            {
+                                throw new ParseRuntimException(e);
+                            }
+                        }
 
-	/**
-	 * Serializes the given model object into xml string
-	 *
-	 * @param model
-	 * @return
-	 */
-	public static String serialize(Object model)
-	{
-		UnaryOperator<Marshaller> modifier = null;
-		return serialize(model, modifier);
-	}
+                        return retval;
+                    }
+                };
+            }
+        };
+    }
 
-	/**
-	 * @see #serialize(Object)
-	 * @param model
-	 * @param modifier
-	 * @return
-	 */
-	public static String serialize(Object model, UnaryOperator<Marshaller> modifier, Class<?>... rootTypes)
-	{
-		String retval = null;
+    /**
+     * Parses the given xml string into the given {@link Class} type
+     *
+     * @param xml
+     * @param type
+     * @return
+     */
+    @SuppressWarnings("unchecked")
+    public static <T> T parse(String xml, Class<T> type)
+    {
+        return parse().from(xml)
+                      .into(type);
+    }
 
-		try
-		{
-			StringWriter writer = new StringWriter();
-			JAXBContext jaxbContext = JAXBContext.newInstance(Stream.concat(Stream.of(model.getClass()), Arrays	.asList(rootTypes)
-																												.stream())
-																	.collect(Collectors.toList())
-																	.toArray(new Class[0]));
-			Marshaller jaxbMarshaller = jaxbContext.createMarshaller();
-			jaxbMarshaller.setProperty(Marshaller.JAXB_FORMATTED_OUTPUT, true);
+    /**
+     * Builder to serialize JAXB xml objects
+     * 
+     * @see #serialize(Object)
+     * @author omnaest
+     */
+    public static interface Serializer
+    {
+        public String serialize(Object model);
 
-			if (modifier != null)
-			{
-				Marshaller modifiedJaxbMarshaller = modifier.apply(jaxbMarshaller);
-				if (modifiedJaxbMarshaller != null)
-				{
-					jaxbMarshaller = modifiedJaxbMarshaller;
-				}
-			}
+        public Serializer withCompactPrint();
 
-			jaxbMarshaller.marshal(model, writer);
+        public Serializer withPrettyPrint();
 
-			writer.close();
-			retval = writer.toString();
+        public Serializer withoutHeader();
 
-		} catch (Exception e)
-		{
-			throw new SerializeRuntimException(e);
-		}
+        public Serializer withHeader();
 
-		return retval;
-	}
+        public Serializer withRootTypes(Class<?> type);
+    }
 
-	@SuppressWarnings("unchecked")
-	public static <T> T clone(T model)
-	{
-		return parse(serialize(model), (Class<T>) model.getClass());
-	}
+    /**
+     * @see Serializer
+     * @return
+     */
+    public static Serializer serializer()
+    {
+        return new Serializer()
+        {
+            private boolean        renderHeader = true;
+            private boolean        prettyPrint  = true;
+            private List<Class<?>> rootTypes    = new ArrayList<>();
+
+            @Override
+            public Serializer withHeader()
+            {
+                this.renderHeader = true;
+                return this;
+            }
+
+            @Override
+            public Serializer withoutHeader()
+            {
+                this.renderHeader = false;
+                return this;
+            }
+
+            @Override
+            public Serializer withPrettyPrint()
+            {
+                this.prettyPrint = true;
+                return this;
+            }
+
+            @Override
+            public Serializer withCompactPrint()
+            {
+                this.prettyPrint = false;
+                return this;
+            }
+
+            @Override
+            public String serialize(Object model)
+            {
+                return XMLHelper.serialize(model, (UnaryOperator<Marshaller>) t ->
+                {
+                    try
+                    {
+                        t.setProperty(Marshaller.JAXB_FRAGMENT, !this.renderHeader);
+                        t.setProperty(Marshaller.JAXB_FORMATTED_OUTPUT, this.prettyPrint);
+
+                    }
+                    catch (Exception e)
+                    {
+                        LOG.error("", e);
+                    }
+                    return t;
+                }, this.rootTypes.toArray(new Class[0]));
+            }
+
+            @Override
+            public Serializer withRootTypes(Class<?> type)
+            {
+                this.rootTypes.add(type);
+                return this;
+            }
+        };
+    }
+
+    /**
+     * Serializes the given model object into xml string
+     *
+     * @param model
+     * @return
+     */
+    public static String serialize(Object model)
+    {
+        UnaryOperator<Marshaller> modifier = null;
+        return serialize(model, modifier);
+    }
+
+    /**
+     * @see #serialize(Object)
+     * @param model
+     * @param modifier
+     * @return
+     */
+    public static String serialize(Object model, UnaryOperator<Marshaller> modifier, Class<?>... rootTypes)
+    {
+        String retval = null;
+
+        try
+        {
+            StringWriter writer = new StringWriter();
+            JAXBContext jaxbContext = JAXBContext.newInstance(Stream.concat(Stream.of(model.getClass()), Arrays.asList(rootTypes)
+                                                                                                               .stream())
+                                                                    .collect(Collectors.toList())
+                                                                    .toArray(new Class[0]));
+            Marshaller jaxbMarshaller = jaxbContext.createMarshaller();
+            jaxbMarshaller.setProperty(Marshaller.JAXB_FORMATTED_OUTPUT, true);
+
+            if (modifier != null)
+            {
+                Marshaller modifiedJaxbMarshaller = modifier.apply(jaxbMarshaller);
+                if (modifiedJaxbMarshaller != null)
+                {
+                    jaxbMarshaller = modifiedJaxbMarshaller;
+                }
+            }
+
+            jaxbMarshaller.marshal(model, writer);
+
+            writer.close();
+            retval = writer.toString();
+
+        }
+        catch (Exception e)
+        {
+            throw new SerializeRuntimException(e);
+        }
+
+        return retval;
+    }
+
+    @SuppressWarnings("unchecked")
+    public static <T> T clone(T model)
+    {
+        return parse(serialize(model), (Class<T>) model.getClass());
+    }
 }
