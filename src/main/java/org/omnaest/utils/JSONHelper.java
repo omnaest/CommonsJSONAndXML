@@ -21,6 +21,7 @@ package org.omnaest.utils;
 import java.io.Reader;
 import java.io.Writer;
 import java.util.Map;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.UnaryOperator;
@@ -36,6 +37,11 @@ public class JSONHelper
 {
     private static final Logger LOG = LoggerFactory.getLogger(JSONHelper.class);
 
+    /**
+     * @see #serialize(Object)
+     * @param object
+     * @return
+     */
     public static String prettyPrint(Object object)
     {
         String retval = null;
@@ -51,6 +57,83 @@ public class JSONHelper
             LOG.error("Exception serializing object into json" + object, e);
         }
         return retval;
+    }
+
+    /**
+     * @see #prettyPrint(Object)
+     * @param object
+     * @return
+     */
+    public static String serialize(Object object)
+    {
+        return serialize(object, false);
+    }
+
+    public static String serialize(Object object, boolean pretty)
+    {
+        String retval = null;
+        try
+        {
+            ObjectMapper objectMapper = new ObjectMapper();
+            if (pretty)
+            {
+                objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
+            }
+            else
+            {
+                objectMapper.disable(SerializationFeature.INDENT_OUTPUT);
+            }
+
+            retval = objectMapper.writeValueAsString(object);
+        }
+        catch (Exception e)
+        {
+            LOG.error("Exception serializing object into json" + object, e);
+            throw new IllegalStateException(e);
+        }
+        return retval;
+    }
+
+    /**
+     * Similar to {@link #serialize(Object, Writer, boolean)} with no pretty print enabled
+     * 
+     * @param object
+     * @param writer
+     */
+    public static void serialize(Object object, Writer writer)
+    {
+        boolean pretty = false;
+        serialize(object, writer, pretty);
+    }
+
+    /**
+     * Similar to {@link #serialize(Object, boolean)}
+     * 
+     * @param object
+     * @param writer
+     * @param pretty
+     */
+    public static void serialize(Object object, Writer writer, boolean pretty)
+    {
+        try
+        {
+            ObjectMapper objectMapper = new ObjectMapper();
+            if (pretty)
+            {
+                objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
+            }
+            else
+            {
+                objectMapper.disable(SerializationFeature.INDENT_OUTPUT);
+            }
+
+            objectMapper.writeValue(writer, object);
+        }
+        catch (Exception e)
+        {
+            LOG.error("Exception serializing object into json" + object, e);
+            throw new IllegalStateException(e);
+        }
     }
 
     public static class JSONSerializationException extends RuntimeException
@@ -135,6 +218,28 @@ public class JSONHelper
     }
 
     /**
+     * Reads a given {@link Class} type instance from the given {@link Reader}
+     * 
+     * @param reader
+     * @param type
+     * @return
+     */
+    public static <T> T readFromReader(Reader reader, Class<T> type)
+    {
+        return readJson((objectMapper) ->
+        {
+            try
+            {
+                return reader != null ? objectMapper.readValue(reader, type) : null;
+            }
+            catch (Exception e)
+            {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
+    /**
      * Reads a given {@link Class} type instance from the given {@link String}
      * 
      * @param data
@@ -192,6 +297,7 @@ public class JSONHelper
     /**
      * Uses {@link ObjectMapper} to map from one object to another
      *
+     * @see #toObjectWithType(Map, Class)
      * @see #toMap(Object)
      * @param object
      * @param type
@@ -200,6 +306,19 @@ public class JSONHelper
     public static <O, T> T toObjectWithType(O object, Class<T> type)
     {
         return new ObjectMapper().convertValue(object, type);
+    }
+
+    /**
+     * Uses {@link ObjectMapper} to map from a {@link Map} to another {@link Object} type
+     *
+     * @see #toMap(Object)
+     * @param object
+     * @param type
+     * @return
+     */
+    public static <T> T toObjectWithType(Map<String, ? extends Object> map, Class<T> type)
+    {
+        return new ObjectMapper().convertValue(map, type);
     }
 
     /**
@@ -217,13 +336,14 @@ public class JSONHelper
      * Returns a nested {@link Map} generated from the given bean
      *
      * @see #toObjectWithType(Object, Class)
+     * @see #toObjectWithType(Map, Class)
      * @param object
      * @return
      */
     @SuppressWarnings("unchecked")
-    public static <O> Map<String, Object> toMap(O object)
+    public static <O, M extends Map<String, ? extends Object>> M toMap(O object)
     {
-        return toObjectWithType(object, Map.class);
+        return (M) toObjectWithType(object, Map.class);
     }
 
     /**
@@ -232,7 +352,21 @@ public class JSONHelper
      * @author omnaest
      * @param <T>
      */
-    public static interface JsonSerializer<T> extends Function<T, String>
+    public static interface JsonStringSerializer<T> extends Function<T, String>
+    {
+    }
+
+    public static interface JsonWriterSerializer<T> extends BiConsumer<T, Writer>
+    {
+    }
+
+    /**
+     * {@link Function} that does use a {@link Reader} to resolve an object instance
+     * 
+     * @author omnaest
+     * @param <T>
+     */
+    public static interface JsonStringDeserializer<T> extends Function<String, T>
     {
     }
 
@@ -242,18 +376,19 @@ public class JSONHelper
      * @author omnaest
      * @param <T>
      */
-    public static interface JsonDeserializer<T> extends Function<String, T>
+    public static interface JsonReaderDeserializer<T> extends Function<Reader, T>
     {
     }
 
     /**
-     * @see JsonSerializer
+     * @see JsonStringSerializer
+     * @see #writerSerializer(Class)
      * @param type
      * @return
      */
-    public static <T> JsonSerializer<T> serializer(Class<? super T> type)
+    public static <T> JsonStringSerializer<T> serializer(Class<? super T> type)
     {
-        return new JsonSerializer<T>()
+        return new JsonStringSerializer<T>()
         {
             @Override
             public String apply(T object)
@@ -264,19 +399,75 @@ public class JSONHelper
     }
 
     /**
-     * @see JsonDeserializer
+     * @see JsonStringSerializer
+     * @see #serializer(Class)
      * @param type
      * @return
      */
-    public static <T> JsonDeserializer<T> deserializer(Class<? super T> type)
+    public static <T> JsonWriterSerializer<T> writerSerializer(Class<? super T> type)
     {
-        return new JsonDeserializer<T>()
+        return new JsonWriterSerializer<T>()
+        {
+            @Override
+            public void accept(T object, Writer writer)
+            {
+                JSONHelper.serialize(object, writer, true);
+            }
+        };
+    }
+
+    /**
+     * Similar to {@link #serializer(Class)} but allows to specify if pretty printing is enabled or not
+     * 
+     * @param type
+     * @param pretty
+     * @return
+     */
+    public static <T> JsonStringSerializer<T> serializer(Class<? super T> type, boolean pretty)
+    {
+        return new JsonStringSerializer<T>()
+        {
+            @Override
+            public String apply(T object)
+            {
+                return pretty ? JSONHelper.prettyPrint(object) : JSONHelper.serialize(object);
+            }
+        };
+    }
+
+    /**
+     * @see JsonStringDeserializer
+     * @see #readerDeserializer(Class)
+     * @param type
+     * @return
+     */
+    public static <T> JsonStringDeserializer<T> deserializer(Class<? super T> type)
+    {
+        return new JsonStringDeserializer<T>()
         {
             @SuppressWarnings("unchecked")
             @Override
             public T apply(String data)
             {
                 return data != null ? (T) JSONHelper.readFromString(data, type) : null;
+            }
+        };
+    }
+
+    /**
+     * @see #deserializer(Class)
+     * @param type
+     * @return
+     */
+    public static <T> JsonReaderDeserializer<T> readerDeserializer(Class<? super T> type)
+    {
+        return new JsonReaderDeserializer<T>()
+        {
+            @SuppressWarnings("unchecked")
+            @Override
+            public T apply(Reader reader)
+            {
+                return (T) JSONHelper.readFromReader(reader, type);
             }
         };
     }
