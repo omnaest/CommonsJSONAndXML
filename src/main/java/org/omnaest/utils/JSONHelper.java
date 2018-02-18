@@ -32,6 +32,7 @@ import org.slf4j.LoggerFactory;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.exc.MismatchedInputException;
 
 public class JSONHelper
 {
@@ -209,6 +210,10 @@ public class JSONHelper
                 T retval = objectMapper.readValue(reader, type);
                 reader.close();
                 return retval;
+            }
+            catch (MismatchedInputException e)
+            {
+                return null;
             }
             catch (Exception e)
             {
