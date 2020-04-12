@@ -55,7 +55,7 @@ public class JSONHelper
         }
         catch (Exception e)
         {
-            LOG.error("Exception serializing object into json" + object, e);
+            LOG.debug("Exception serializing object into json" + object, e);
         }
         return retval;
     }
@@ -89,7 +89,7 @@ public class JSONHelper
         }
         catch (Exception e)
         {
-            LOG.error("Exception serializing object into json" + object, e);
+            LOG.debug("Exception serializing object into json" + object, e);
             throw new IllegalStateException(e);
         }
         return retval;
@@ -132,7 +132,7 @@ public class JSONHelper
         }
         catch (Exception e)
         {
-            LOG.error("Exception serializing object into json" + object, e);
+            LOG.debug("Exception serializing object into json" + object, e);
             throw new IllegalStateException(e);
         }
     }
@@ -184,7 +184,7 @@ public class JSONHelper
             }
             catch (Exception e)
             {
-                LOG.error("Exception serializing object into json" + object, e);
+                LOG.debug("Exception serializing object into json" + object, e);
                 throw new JSONSerializationException(e);
             }
         };

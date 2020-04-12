@@ -32,14 +32,19 @@ import javax.xml.bind.JAXBContext;
 import javax.xml.bind.JAXBElement;
 import javax.xml.bind.Marshaller;
 import javax.xml.bind.Unmarshaller;
+import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.parsers.SAXParserFactory;
 import javax.xml.transform.Source;
 import javax.xml.transform.sax.SAXSource;
+import javax.xml.transform.stream.StreamSource;
 
 import org.omnaest.utils.filter.XMLNameSpaceFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.xml.sax.InputSource;
+import org.xml.sax.SAXException;
+import org.xml.sax.SAXNotRecognizedException;
+import org.xml.sax.SAXNotSupportedException;
 import org.xml.sax.XMLReader;
 
 /**
@@ -52,6 +57,118 @@ import org.xml.sax.XMLReader;
 public class XMLHelper
 {
     private static final Logger LOG = LoggerFactory.getLogger(XMLHelper.class);
+
+    private static final class XMLParserImpl implements XMLParserLoadedWithSaxPreParser, XMLParserLoaded
+    {
+        private Reader             reader;
+        private XMLNameSpaceFilter nameSpaceFilter;
+        private boolean            namespaces        = true;
+        private boolean            namespacePrefixes = true;
+        private boolean            usingSAXParser    = false;
+
+        private XMLParserImpl(Reader reader)
+        {
+            this.reader = reader;
+        }
+
+        @Override
+        public XMLParserLoadedWithSaxPreParser withSAXParser()
+        {
+            this.usingSAXParser = true;
+            return this;
+        }
+
+        @Override
+        public XMLParserLoadedWithSaxPreParser enforceNamespace(String namespace)
+        {
+            this.nameSpaceFilter = new XMLNameSpaceFilter(namespace);
+            return this;
+        }
+
+        @Override
+        public XMLParserLoadedWithSaxPreParser useNamespaces(boolean namespaces)
+        {
+            this.namespaces = namespaces;
+            return this;
+        }
+
+        @Override
+        public XMLParserLoadedWithSaxPreParser useNamespacePrefixes(boolean namespacePrefixes)
+        {
+            this.namespacePrefixes = namespacePrefixes;
+            return this;
+        }
+
+        @SuppressWarnings("unchecked")
+        @Override
+        public <T> T into(Class<T> type)
+        {
+            T retval = null;
+
+            if (this.reader != null)
+            {
+                try
+                {
+                    Source xmlSource;
+                    if (this.usingSAXParser)
+                    {
+                        xmlSource = this.generateSAXParserSource();
+                    }
+                    else
+                    {
+                        xmlSource = new StreamSource(this.reader);
+                    }
+
+                    //
+                    JAXBContext jaxbContext = JAXBContext.newInstance(type);
+                    Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
+
+                    //
+                    if (JAXBElement.class.isAssignableFrom(type))
+                    {
+                        retval = (T) unmarshaller.unmarshal(xmlSource, Object.class);
+                    }
+                    else
+                    {
+                        retval = (T) unmarshaller.unmarshal(xmlSource);
+                    }
+
+                }
+                catch (Exception e)
+                {
+                    throw new ParseRuntimException(e);
+                }
+            }
+
+            return retval;
+        }
+
+        private Source generateSAXParserSource() throws ParserConfigurationException, SAXNotRecognizedException, SAXNotSupportedException, SAXException
+        {
+            Source xmlSource;
+            SAXParserFactory parserFactory = SAXParserFactory.newInstance();
+            parserFactory.setFeature("http://xml.org/sax/features/external-general-entities", false);
+            parserFactory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
+            parserFactory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
+
+            XMLReader xmlReader = parserFactory.newSAXParser()
+                                               .getXMLReader();
+            xmlReader.setFeature("http://xml.org/sax/features/namespaces", this.namespaces);
+            xmlReader.setFeature("http://xml.org/sax/features/namespace-prefixes", this.namespacePrefixes);
+
+            if (this.nameSpaceFilter != null)
+            {
+                xmlSource = new SAXSource(this.nameSpaceFilter, new InputSource(this.reader));
+                this.nameSpaceFilter.setParent(xmlReader);
+
+            }
+            else
+            {
+                xmlSource = new SAXSource(xmlReader, new InputSource(this.reader));
+            }
+            return xmlSource;
+        }
+    }
 
     public static class ParseRuntimException extends RuntimeException
     {
@@ -82,15 +199,24 @@ public class XMLHelper
 
     }
 
-    public static interface XMLParserLoaded
+    public static interface XMLParserLoadedBase
     {
         public <T> T into(Class<T> type);
 
-        public XMLParserLoaded enforceNamespace(String namespace);
+    }
 
-        XMLParserLoaded useNamespacePrefixes(boolean namespacePrefixes);
+    public static interface XMLParserLoaded extends XMLParserLoadedBase
+    {
+        public XMLParserLoadedWithSaxPreParser withSAXParser();
+    }
 
-        XMLParserLoaded useNamespaces(boolean namespaces);
+    public static interface XMLParserLoadedWithSaxPreParser extends XMLParserLoadedBase
+    {
+        public XMLParserLoadedWithSaxPreParser enforceNamespace(String namespace);
+
+        public XMLParserLoadedWithSaxPreParser useNamespacePrefixes(boolean namespacePrefixes);
+
+        public XMLParserLoadedWithSaxPreParser useNamespaces(boolean namespaces);
     }
 
     public static XMLParser parse()
@@ -107,87 +233,7 @@ public class XMLHelper
             @Override
             public XMLParserLoaded from(Reader reader)
             {
-                return new XMLParserLoaded()
-                {
-                    private XMLNameSpaceFilter nameSpaceFilter;
-                    private boolean            namespaces        = true;
-                    private boolean            namespacePrefixes = true;
-
-                    @Override
-                    public XMLParserLoaded enforceNamespace(String namespace)
-                    {
-                        this.nameSpaceFilter = new XMLNameSpaceFilter(namespace);
-                        return this;
-                    }
-
-                    @Override
-                    public XMLParserLoaded useNamespaces(boolean namespaces)
-                    {
-                        this.namespaces = namespaces;
-                        return this;
-                    }
-
-                    @Override
-                    public XMLParserLoaded useNamespacePrefixes(boolean namespacePrefixes)
-                    {
-                        this.namespacePrefixes = namespacePrefixes;
-                        return this;
-                    }
-
-                    @SuppressWarnings("unchecked")
-                    @Override
-                    public <T> T into(Class<T> type)
-                    {
-                        T retval = null;
-
-                        if (reader != null)
-                        {
-                            try
-                            {
-                                SAXParserFactory parserFactory = SAXParserFactory.newInstance();
-                                parserFactory.setFeature("http://xml.org/sax/features/external-general-entities", false);
-                                parserFactory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
-                                parserFactory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
-
-                                XMLReader xmlReader = parserFactory.newSAXParser()
-                                                                   .getXMLReader();
-                                xmlReader.setFeature("http://xml.org/sax/features/namespaces", this.namespaces);
-                                xmlReader.setFeature("http://xml.org/sax/features/namespace-prefixes", this.namespacePrefixes);
-
-                                Source xmlSource;
-                                if (this.nameSpaceFilter != null)
-                                {
-                                    xmlSource = new SAXSource(this.nameSpaceFilter, new InputSource(reader));
-                                    this.nameSpaceFilter.setParent(xmlReader);
-
-                                }
-                                else
-                                {
-                                    xmlSource = new SAXSource(xmlReader, new InputSource(reader));
-                                }
-
-                                JAXBContext jaxbContext = JAXBContext.newInstance(type);
-                                Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
-
-                                if (JAXBElement.class.isAssignableFrom(type))
-                                {
-                                    retval = (T) unmarshaller.unmarshal(xmlSource, Object.class);
-                                }
-                                else
-                                {
-                                    retval = (T) unmarshaller.unmarshal(xmlSource);
-                                }
-
-                            }
-                            catch (Exception e)
-                            {
-                                throw new ParseRuntimException(e);
-                            }
-                        }
-
-                        return retval;
-                    }
-                };
+                return new XMLParserImpl(reader);
             }
         };
     }
@@ -199,7 +245,6 @@ public class XMLHelper
      * @param type
      * @return
      */
-    @SuppressWarnings("unchecked")
     public static <T> T parse(String xml, Class<T> type)
     {
         return parse().from(xml)
