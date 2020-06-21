@@ -21,6 +21,7 @@ package org.omnaest.utils;
 import java.io.Reader;
 import java.io.Writer;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -30,9 +31,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.ObjectReader;
+import com.fasterxml.jackson.databind.ObjectWriter;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.exc.MismatchedInputException;
+import com.fasterxml.jackson.databind.type.TypeFactory;
 
 public class JSONHelper
 {
@@ -45,19 +50,8 @@ public class JSONHelper
      */
     public static String prettyPrint(Object object)
     {
-        String retval = null;
-        try
-        {
-            ObjectMapper objectMapper = new ObjectMapper();
-            objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
-
-            retval = objectMapper.writeValueAsString(object);
-        }
-        catch (Exception e)
-        {
-            LOG.debug("Exception serializing object into json" + object, e);
-        }
-        return retval;
+        return serializer().withPrettyPrint()
+                           .apply(object);
     }
 
     /**
@@ -72,27 +66,34 @@ public class JSONHelper
 
     public static String serialize(Object object, boolean pretty)
     {
-        String retval = null;
-        try
-        {
-            ObjectMapper objectMapper = new ObjectMapper();
-            if (pretty)
-            {
-                objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
-            }
-            else
-            {
-                objectMapper.disable(SerializationFeature.INDENT_OUTPUT);
-            }
+        return serializer().withPrettyPrint(pretty)
+                           .withExceptionHandler(e ->
+                           {
+                               throw new IllegalStateException(e);
+                           })
+                           .apply(object);
 
-            retval = objectMapper.writeValueAsString(object);
-        }
-        catch (Exception e)
-        {
-            LOG.debug("Exception serializing object into json" + object, e);
-            throw new IllegalStateException(e);
-        }
-        return retval;
+        //        String retval = null;
+        //        try
+        //        {
+        //            ObjectMapper objectMapper = new ObjectMapper();
+        //            if (pretty)
+        //            {
+        //                objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
+        //            }
+        //            else
+        //            {
+        //                objectMapper.disable(SerializationFeature.INDENT_OUTPUT);
+        //            }
+        //
+        //            retval = objectMapper.writeValueAsString(object);
+        //        }
+        //        catch (Exception e)
+        //        {
+        //            LOG.debug("Exception serializing object into json" + object, e);
+        //            throw new IllegalStateException(e);
+        //        }
+        //        return retval;
     }
 
     /**
@@ -359,6 +360,14 @@ public class JSONHelper
      */
     public static interface JsonStringSerializer<T> extends Function<T, String>
     {
+        public default JsonStringSerializer<T> withPrettyPrint()
+        {
+            return this.withPrettyPrint(true);
+        }
+
+        public JsonStringSerializer<T> withPrettyPrint(boolean active);
+
+        public JsonStringSerializer<T> withExceptionHandler(Consumer<Exception> exceptionHandler);
     }
 
     public static interface JsonWriterSerializer<T> extends BiConsumer<T, Writer>
@@ -373,6 +382,8 @@ public class JSONHelper
      */
     public static interface JsonStringDeserializer<T> extends Function<String, T>
     {
+
+        JsonStringDeserializer<T> withExceptionHandler(Consumer<Exception> exceptionHandler);
     }
 
     /**
@@ -388,24 +399,53 @@ public class JSONHelper
     /**
      * @see JsonStringSerializer
      * @see #writerSerializer(Class)
-     * @param type
      * @return
      */
-    public static <T> JsonStringSerializer<T> serializer(Class<? super T> type)
+    public static <T> JsonStringSerializer<T> serializer()
     {
         return new JsonStringSerializer<T>()
         {
+            private ObjectMapper                         objectMapper   = new ObjectMapper();
+            private Function<ObjectMapper, ObjectWriter> writerResolver = om -> om.writer();
+            private Consumer<Exception>                  exceptionHandler;
+
             @Override
             public String apply(T object)
             {
-                return JSONHelper.prettyPrint(object);
+                String retval = null;
+                try
+                {
+                    retval = this.writerResolver.apply(this.objectMapper)
+                                                .writeValueAsString(object);
+                }
+                catch (Exception e)
+                {
+                    LOG.debug("Exception serializing object into json" + object, e);
+                    Optional.ofNullable(this.exceptionHandler)
+                            .ifPresent(handler -> handler.accept(e));
+                }
+                return retval;
+            }
+
+            @Override
+            public JsonStringSerializer<T> withPrettyPrint(boolean active)
+            {
+                this.writerResolver = active ? om -> om.writerWithDefaultPrettyPrinter() : om -> om.writer();
+                return this;
+            }
+
+            @Override
+            public JsonStringSerializer<T> withExceptionHandler(Consumer<Exception> exceptionHandler)
+            {
+                this.exceptionHandler = exceptionHandler;
+                return this;
             }
         };
     }
 
     /**
      * @see JsonStringSerializer
-     * @see #serializer(Class)
+     * @see #serializer()
      * @param type
      * @return
      */
@@ -422,22 +462,16 @@ public class JSONHelper
     }
 
     /**
-     * Similar to {@link #serializer(Class)} but allows to specify if pretty printing is enabled or not
+     * Similar to {@link #serializer()} but allows to specify if pretty printing is enabled or not
      * 
      * @param type
      * @param pretty
      * @return
      */
+    @SuppressWarnings("unchecked")
     public static <T> JsonStringSerializer<T> serializer(Class<? super T> type, boolean pretty)
     {
-        return new JsonStringSerializer<T>()
-        {
-            @Override
-            public String apply(T object)
-            {
-                return pretty ? JSONHelper.prettyPrint(object) : JSONHelper.serialize(object);
-            }
-        };
+        return (JsonStringSerializer<T>) serializer().withPrettyPrint(pretty);
     }
 
     /**
@@ -446,15 +480,46 @@ public class JSONHelper
      * @param type
      * @return
      */
+    @SuppressWarnings("unchecked")
     public static <T> JsonStringDeserializer<T> deserializer(Class<? super T> type)
+    {
+        return (JsonStringDeserializer<T>) deserializer(tf -> tf.constructSimpleType(type, new JavaType[0]));
+    }
+
+    public static <T> JsonStringDeserializer<T> deserializer(Function<TypeFactory, JavaType> typeFunction)
     {
         return new JsonStringDeserializer<T>()
         {
-            @SuppressWarnings("unchecked")
+            private ObjectMapper                         objectMapper   = new ObjectMapper();
+            private Function<ObjectMapper, ObjectReader> writerResolver = om -> om.readerFor(typeFunction.apply(TypeFactory.defaultInstance()));
+            private Consumer<Exception>                  exceptionHandler;
+
             @Override
             public T apply(String data)
             {
-                return data != null ? (T) JSONHelper.readFromString(data, type) : null;
+                T retval = null;
+                if (data != null)
+                {
+                    try
+                    {
+                        retval = this.writerResolver.apply(this.objectMapper)
+                                                    .readValue(data);
+                    }
+                    catch (Exception e)
+                    {
+                        LOG.debug("Exception deserializing json into object" + data, e);
+                        Optional.ofNullable(this.exceptionHandler)
+                                .ifPresent(handler -> handler.accept(e));
+                    }
+                }
+                return retval;
+            }
+
+            @Override
+            public JsonStringDeserializer<T> withExceptionHandler(Consumer<Exception> exceptionHandler)
+            {
+                this.exceptionHandler = exceptionHandler;
+                return this;
             }
         };
     }
@@ -497,5 +562,49 @@ public class JSONHelper
     public static <E> UnaryOperator<E> cloner()
     {
         return element -> clone(element);
+    }
+
+    /**
+     * @see JsonStringSerializer
+     * @see JsonStringDeserializer
+     * @author omnaest
+     * @param <T>
+     */
+    public static interface JsonStringConverter<T>
+    {
+        public JsonStringSerializer<T> serializer();
+
+        public JsonStringDeserializer<T> deserializer();
+    }
+
+    /**
+     * Returns a {@link JsonStringConverter} which contains a {@link JsonStringSerializer} and {@link JsonStringDeserializer}
+     * 
+     * @param type
+     * @return
+     */
+    public static <T> JsonStringConverter<T> converter(Class<T> type)
+    {
+        return converter(tf -> tf.constructSimpleType(type, new JavaType[0]));
+    }
+
+    public static <T> JsonStringConverter<T> converter(Function<TypeFactory, JavaType> typeFunction)
+    {
+        JsonStringSerializer<T> serializer = serializer();
+        JsonStringDeserializer<T> deserializer = deserializer(typeFunction);
+        return new JsonStringConverter<T>()
+        {
+            @Override
+            public JsonStringSerializer<T> serializer()
+            {
+                return serializer;
+            }
+
+            @Override
+            public JsonStringDeserializer<T> deserializer()
+            {
+                return deserializer;
+            }
+        };
     }
 }

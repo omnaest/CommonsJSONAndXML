@@ -82,4 +82,16 @@ public class JSONHelperTest
         assertEquals("value1", domain.getField1());
     }
 
+    @Test
+    public void testPrettyPrint() throws Exception
+    {
+        assertEquals("{\r\n  \"field1\" : \"value1\"\r\n}", JSONHelper.prettyPrint(new Domain("value1")));
+    }
+
+    @Test
+    public void testSerializeObject() throws Exception
+    {
+        assertEquals("{\"field1\":\"value1\"}", JSONHelper.serialize(new Domain("value1")));
+    }
+
 }
