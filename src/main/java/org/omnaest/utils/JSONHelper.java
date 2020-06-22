@@ -478,12 +478,13 @@ public class JSONHelper
      * @see JsonStringDeserializer
      * @see #readerDeserializer(Class)
      * @param type
+     * @param genericParameterTypes
      * @return
      */
     @SuppressWarnings("unchecked")
-    public static <T> JsonStringDeserializer<T> deserializer(Class<? super T> type)
+    public static <T> JsonStringDeserializer<T> deserializer(Class<? super T> type, Class<?>... genericParameterTypes)
     {
-        return (JsonStringDeserializer<T>) deserializer(tf -> tf.constructSimpleType(type, new JavaType[0]));
+        return (JsonStringDeserializer<T>) deserializer(tf -> tf.constructParametricType(type, genericParameterTypes));
     }
 
     public static <T> JsonStringDeserializer<T> deserializer(Function<TypeFactory, JavaType> typeFunction)
@@ -575,17 +576,20 @@ public class JSONHelper
         public JsonStringSerializer<T> serializer();
 
         public JsonStringDeserializer<T> deserializer();
+
+        public JsonStringConverter<T> withExceptionHandler(Consumer<Exception> exceptionHandler);
     }
 
     /**
      * Returns a {@link JsonStringConverter} which contains a {@link JsonStringSerializer} and {@link JsonStringDeserializer}
      * 
      * @param type
+     * @param genericParameterTypes
      * @return
      */
-    public static <T> JsonStringConverter<T> converter(Class<T> type)
+    public static <T> JsonStringConverter<T> converter(Class<T> type, Class<?>... genericParameterTypes)
     {
-        return converter(tf -> tf.constructSimpleType(type, new JavaType[0]));
+        return converter(tf -> tf.constructParametricType(type, genericParameterTypes));
     }
 
     public static <T> JsonStringConverter<T> converter(Function<TypeFactory, JavaType> typeFunction)
@@ -604,6 +608,14 @@ public class JSONHelper
             public JsonStringDeserializer<T> deserializer()
             {
                 return deserializer;
+            }
+
+            @Override
+            public JsonStringConverter<T> withExceptionHandler(Consumer<Exception> exceptionHandler)
+            {
+                serializer.withExceptionHandler(exceptionHandler);
+                deserializer.withExceptionHandler(exceptionHandler);
+                return this;
             }
         };
     }
