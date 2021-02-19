@@ -85,7 +85,8 @@ public class JSONHelperTest
     @Test
     public void testPrettyPrint() throws Exception
     {
-        assertEquals("{\r\n  \"field1\" : \"value1\"\r\n}", JSONHelper.prettyPrint(new Domain("value1")));
+        assertEquals("{\n  \"field1\" : \"value1\"\n}", JSONHelper.prettyPrint(new Domain("value1"))
+                                                                  .replaceAll("[\\n\\r]+", "\n"));
     }
 
     @Test
