@@ -18,6 +18,7 @@
 */
 package org.omnaest.utils;
 
+import java.io.IOException;
 import java.io.Reader;
 import java.io.Writer;
 import java.util.Map;
@@ -130,6 +131,15 @@ public class JSONHelper
             }
 
             objectMapper.writeValue(writer, object);
+
+            try
+            {
+                writer.flush();
+            }
+            catch (Exception e)
+            {
+                // ignore
+            }
         }
         catch (Exception e)
         {
@@ -182,6 +192,15 @@ public class JSONHelper
                 objectMapper.enable(SerializationFeature.CLOSE_CLOSEABLE);
 
                 objectMapper.writeValue(writer, object);
+
+                try
+                {
+                    writer.flush();
+                }
+                catch (Exception e)
+                {
+                    // ignore
+                }
             }
             catch (Exception e)
             {
@@ -538,7 +557,21 @@ public class JSONHelper
             @Override
             public T apply(Reader reader)
             {
-                return (T) JSONHelper.readFromReader(reader, type);
+                T value = (T) JSONHelper.readFromReader(reader, type);
+                this.closeReader(reader);
+                return value;
+            }
+
+            private void closeReader(Reader reader)
+            {
+                try
+                {
+                    reader.close();
+                }
+                catch (IOException e)
+                {
+                    // ignore
+                }
             }
         };
     }
