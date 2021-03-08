@@ -536,9 +536,9 @@ public class JSONHelper
     {
         return new JsonStringDeserializer<T>()
         {
-            private ObjectMapper                         objectMapper   = new ObjectMapper();
-            private Function<ObjectMapper, ObjectReader> writerResolver = om -> om.readerFor(typeFunction.apply(TypeFactory.defaultInstance()));
-            private Consumer<Exception>                  exceptionHandler;
+            private ObjectMapper                         objectMapper     = new ObjectMapper();
+            private Function<ObjectMapper, ObjectReader> writerResolver   = om -> om.readerFor(typeFunction.apply(TypeFactory.defaultInstance()));
+            private Consumer<Exception>                  exceptionHandler = e -> LOG.warn("Failed to deserialize json", e);;
 
             @Override
             public T apply(String data)
