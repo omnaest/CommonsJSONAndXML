@@ -292,7 +292,7 @@ public class JSONHelper
         {
             try
             {
-                return data != null ? objectMapper.readValue(data, type) : null;
+                return data != null && !data.isEmpty() ? objectMapper.readValue(data, type) : null;
             }
             catch (Exception e)
             {
