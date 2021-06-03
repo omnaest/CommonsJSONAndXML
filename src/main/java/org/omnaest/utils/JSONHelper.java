@@ -46,6 +46,7 @@ import java.util.function.UnaryOperator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -402,6 +403,19 @@ public class JSONHelper
         public JsonStringSerializer<T> withPrettyPrint(boolean active);
 
         public JsonStringSerializer<T> withExceptionHandler(Consumer<Exception> exceptionHandler);
+
+        public JsonByteArraySerializer<T> asByteArraySerializer();
+    }
+
+    /**
+     * Serializer to generate byte arrays as output
+     * 
+     * @author omnaest
+     * @param <T>
+     */
+    public static interface JsonByteArraySerializer<T> extends Function<T, byte[]>
+    {
+
     }
 
     public static interface JsonWriterSerializer<T> extends BiConsumer<T, Writer>
@@ -417,7 +431,14 @@ public class JSONHelper
     public static interface JsonStringDeserializer<T> extends Function<String, T>
     {
 
-        JsonStringDeserializer<T> withExceptionHandler(Consumer<Exception> exceptionHandler);
+        public JsonStringDeserializer<T> withExceptionHandler(Consumer<Exception> exceptionHandler);
+
+        public JsonByteArrayDeserializer<T> asByteArrayDeserializer();
+    }
+
+    public static interface JsonByteArrayDeserializer<T> extends Function<byte[], T>
+    {
+
     }
 
     /**
@@ -446,11 +467,27 @@ public class JSONHelper
             @Override
             public String apply(T object)
             {
-                String retval = null;
+                Function<ObjectWriter, String> objectWriterExecutor = ow ->
+                {
+                    try
+                    {
+                        return ow.writeValueAsString(object);
+                    }
+                    catch (JsonProcessingException e)
+                    {
+                        throw new IllegalStateException(e);
+                    }
+                };
+                return this.<String>applyWithExecutor(object, objectWriterExecutor);
+            }
+
+            private <R> R applyWithExecutor(T object, Function<ObjectWriter, R> objectWriterExecutor)
+            {
+                R retval = null;
                 try
                 {
-                    retval = this.writerResolver.apply(this.objectMapper)
-                                                .writeValueAsString(object);
+                    retval = this.writerResolver.andThen(objectWriterExecutor)
+                                                .apply(this.objectMapper);
                 }
                 catch (Exception e)
                 {
@@ -473,6 +510,31 @@ public class JSONHelper
             {
                 this.exceptionHandler = exceptionHandler;
                 return this;
+            }
+
+            @Override
+            public JsonByteArraySerializer<T> asByteArraySerializer()
+            {
+                return new JsonByteArraySerializer<T>()
+                {
+
+                    @Override
+                    public byte[] apply(T object)
+                    {
+                        Function<ObjectWriter, byte[]> objectWriterExecutor = ow ->
+                        {
+                            try
+                            {
+                                return ow.writeValueAsBytes(object);
+                            }
+                            catch (JsonProcessingException e)
+                            {
+                                throw new IllegalStateException(e);
+                            }
+                        };
+                        return applyWithExecutor(object, objectWriterExecutor);
+                    }
+                };
             }
         };
     }
@@ -520,6 +582,17 @@ public class JSONHelper
     }
 
     /**
+     * Similar to {@link #serializer(Class, boolean)} with pretty print
+     * 
+     * @param type
+     * @return
+     */
+    public static <T> JsonStringSerializer<T> serializer(Class<? super T> type)
+    {
+        return serializer(type, true);
+    }
+
+    /**
      * @see JsonStringDeserializer
      * @see #readerDeserializer(Class)
      * @param type
@@ -543,13 +616,29 @@ public class JSONHelper
             @Override
             public T apply(String data)
             {
+                Function<ObjectReader, T> objectReaderExecutor = or ->
+                {
+                    try
+                    {
+                        return or.readValue(data);
+                    }
+                    catch (JsonProcessingException e)
+                    {
+                        throw new IllegalStateException(e);
+                    }
+                };
+                return this.applyWithExecutor(data, objectReaderExecutor);
+            }
+
+            private <I> T applyWithExecutor(I data, Function<ObjectReader, T> objectReaderExecutor)
+            {
                 T retval = null;
                 if (data != null)
                 {
                     try
                     {
-                        retval = this.writerResolver.apply(this.objectMapper)
-                                                    .readValue(data);
+                        retval = this.writerResolver.andThen(objectReaderExecutor)
+                                                    .apply(this.objectMapper);
                     }
                     catch (Exception e)
                     {
@@ -566,6 +655,30 @@ public class JSONHelper
             {
                 this.exceptionHandler = exceptionHandler;
                 return this;
+            }
+
+            @Override
+            public JsonByteArrayDeserializer<T> asByteArrayDeserializer()
+            {
+                return new JsonByteArrayDeserializer<T>()
+                {
+                    @Override
+                    public T apply(byte[] data)
+                    {
+                        Function<ObjectReader, T> objectReaderExecutor = or ->
+                        {
+                            try
+                            {
+                                return or.readValue(data);
+                            }
+                            catch (IOException e)
+                            {
+                                throw new IllegalStateException(e);
+                            }
+                        };
+                        return applyWithExecutor(data, objectReaderExecutor);
+                    }
+                };
             }
         };
     }
