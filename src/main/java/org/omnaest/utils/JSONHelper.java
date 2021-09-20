@@ -36,24 +36,37 @@ package org.omnaest.utils;
 import java.io.IOException;
 import java.io.Reader;
 import java.io.Writer;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.UnaryOperator;
+import java.util.stream.Stream;
+import java.util.stream.StreamSupport;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.core.JsonGenerator.Feature;
+import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JavaType;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.JsonSerializer;
+import com.fasterxml.jackson.databind.KeyDeserializer;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectReader;
 import com.fasterxml.jackson.databind.ObjectWriter;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.exc.MismatchedInputException;
+import com.fasterxml.jackson.databind.module.SimpleModule;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.type.TypeFactory;
 
 public class JSONHelper
@@ -72,6 +85,8 @@ public class JSONHelper
     }
 
     /**
+     * Serializes the given {@link Object} without pretty formatting.
+     * 
      * @see #prettyPrint(Object)
      * @param object
      * @return
@@ -160,6 +175,65 @@ public class JSONHelper
         catch (Exception e)
         {
             LOG.debug("Exception serializing object into json" + object, e);
+            throw new IllegalStateException(e);
+        }
+    }
+
+    public static void serializeArray(Stream<? extends Object> stream, Writer writer)
+    {
+        boolean pretty = false;
+        serializeArray(stream, writer, pretty);
+    }
+
+    /**
+     * Similar to {@link #serialize(Object, Writer, boolean)} but consumes a {@link Stream} of {@link Object}s in a memory efficient way.
+     * 
+     * @param stream
+     * @param writer
+     * @param pretty
+     */
+    public static void serializeArray(Stream<? extends Object> stream, Writer writer, boolean pretty)
+    {
+        try
+        {
+            ObjectMapper objectMapper = new ObjectMapper().configure(SerializationFeature.INDENT_OUTPUT, pretty);
+
+            try (JsonGenerator jsonGenerator = objectMapper.createGenerator(writer)
+                                                           .disable(Feature.AUTO_CLOSE_TARGET))
+            {
+                jsonGenerator.writeStartArray();
+
+                Optional.ofNullable(stream)
+                        .orElse(Stream.empty())
+                        .forEach(object ->
+                        {
+                            try
+                            {
+                                objectMapper.writeValue(jsonGenerator, object);
+                            }
+                            catch (Exception e)
+                            {
+                                LOG.debug("Exception serializing array object into json " + object, e);
+                                throw new IllegalStateException(e);
+                            }
+                        });
+
+                jsonGenerator.writeEndArray();
+            }
+
+            //
+            try
+            {
+                writer.flush();
+            }
+            catch (Exception e)
+            {
+                // ignore
+            }
+        }
+        catch (Exception e)
+        {
+            LOG.debug("Exception serializing array into json", e);
             throw new IllegalStateException(e);
         }
     }
@@ -272,6 +346,109 @@ public class JSONHelper
             try
             {
                 return reader != null ? objectMapper.readValue(reader, type) : null;
+            }
+            catch (Exception e)
+            {
+                throw new RuntimeException(e);
+            }
+        });
+    }
+
+    public static <T> Stream<T> readArrayFromReader(Reader reader, Class<T> type)
+    {
+        return readJson((objectMapper) ->
+        {
+            try
+            {
+                return Optional.ofNullable(reader)
+                               .map(r ->
+                               {
+                                   try
+                                   {
+                                       JsonParser jsonParser = objectMapper.getFactory()
+                                                                           .createParser(reader);
+
+                                       if (jsonParser.nextToken() != JsonToken.START_ARRAY)
+                                       {
+                                           throw new IllegalStateException("Content must contain a JSON array on root level");
+                                       }
+
+                                       Iterable<T> iterable = () -> new Iterator<T>()
+                                       {
+                                           private AtomicReference<JsonToken> token = new AtomicReference<>();
+
+                                           @Override
+                                           public boolean hasNext()
+                                           {
+                                               this.fetchNextTokenIfNoTokenPresent();
+                                               return this.token.get() != JsonToken.END_ARRAY;
+                                           }
+
+                                           private void fetchNextTokenIfNoTokenPresent()
+                                           {
+                                               this.token.updateAndGet(token ->
+                                               {
+                                                   if (token != null)
+                                                   {
+                                                       return token;
+                                                   }
+                                                   else
+                                                   {
+                                                       try
+                                                       {
+                                                           return jsonParser.nextToken();
+                                                       }
+                                                       catch (IOException e)
+                                                       {
+                                                           throw new RuntimeException(e);
+                                                       }
+                                                   }
+                                               });
+                                           }
+
+                                           @Override
+                                           public T next()
+                                           {
+                                               try
+                                               {
+                                                   this.fetchNextTokenIfNoTokenPresent();
+
+                                                   T value = objectMapper.readValue(jsonParser, type);
+
+                                                   this.clearToken();
+
+                                                   return value;
+                                               }
+                                               catch (Exception e)
+                                               {
+                                                   throw new RuntimeException(e);
+                                               }
+                                           }
+
+                                           private void clearToken()
+                                           {
+                                               this.token.set(null);
+                                           }
+                                       };
+                                       return StreamSupport.stream(iterable.spliterator(), false)
+                                                           .onClose(() ->
+                                                           {
+                                                               try
+                                                               {
+                                                                   jsonParser.close();
+                                                               }
+                                                               catch (IOException e)
+                                                               {
+                                                                   throw new RuntimeException(e);
+                                                               }
+                                                           });
+                                   }
+                                   catch (Exception e)
+                                   {
+                                       throw new RuntimeException(e);
+                                   }
+                               })
+                               .orElse(Stream.empty());
             }
             catch (Exception e)
             {
@@ -420,6 +597,23 @@ public class JSONHelper
 
     public static interface JsonWriterSerializer<T> extends BiConsumer<T, Writer>
     {
+        public JsonWriterSerializerWithWriter<T> withWriter(Writer writer);
+
+        public JsonWriterSerializerWithObject<T> wrapObject(T object);
+
+        public JsonWriterArraySerializer<T> forArray();
+    }
+
+    public static interface JsonWriterSerializerWithWriter<T> extends Consumer<T>
+    {
+    }
+
+    public static interface JsonWriterSerializerWithObject<T> extends Consumer<Writer>
+    {
+    }
+
+    public static interface JsonWriterArraySerializer<T> extends BiConsumer<Stream<T>, Writer>
+    {
     }
 
     /**
@@ -433,7 +627,10 @@ public class JSONHelper
 
         public JsonStringDeserializer<T> withExceptionHandler(Consumer<Exception> exceptionHandler);
 
+        public JsonStringDeserializer<T> withKeyDeserializer(Class<?> type, KeyDeserializer keyDeserializer);
+
         public JsonByteArrayDeserializer<T> asByteArrayDeserializer();
+
     }
 
     public static interface JsonByteArrayDeserializer<T> extends Function<byte[], T>
@@ -449,6 +646,12 @@ public class JSONHelper
      */
     public static interface JsonReaderDeserializer<T> extends Function<Reader, T>
     {
+        public JsonReaderArrayDeserializer<T> forArray();
+    }
+
+    public static interface JsonReaderArrayDeserializer<T> extends Function<Reader, Stream<T>>
+    {
+
     }
 
     /**
@@ -565,6 +768,47 @@ public class JSONHelper
             {
                 JSONHelper.serialize(object, writer, true);
             }
+
+            @Override
+            public JsonWriterSerializerWithWriter<T> withWriter(Writer writer)
+            {
+                JsonWriterSerializer<T> serializer = this;
+                return new JsonWriterSerializerWithWriter<T>()
+                {
+                    @Override
+                    public void accept(T object)
+                    {
+                        serializer.accept(object, writer);
+                    }
+                };
+            }
+
+            @Override
+            public JsonWriterSerializerWithObject<T> wrapObject(T object)
+            {
+                JsonWriterSerializer<T> serializer = this;
+                return new JsonWriterSerializerWithObject<T>()
+                {
+                    @Override
+                    public void accept(Writer writer)
+                    {
+                        serializer.accept(object, writer);
+                    }
+                };
+            }
+
+            @Override
+            public JsonWriterArraySerializer<T> forArray()
+            {
+                return new JsonWriterArraySerializer<T>()
+                {
+                    @Override
+                    public void accept(Stream<T> stream, Writer writer)
+                    {
+                        serializeArray(stream, writer);
+                    }
+                };
+            }
         };
     }
 
@@ -612,6 +856,15 @@ public class JSONHelper
             private ObjectMapper                         objectMapper     = new ObjectMapper();
             private Function<ObjectMapper, ObjectReader> writerResolver   = om -> om.readerFor(typeFunction.apply(TypeFactory.defaultInstance()));
             private Consumer<Exception>                  exceptionHandler = e -> LOG.warn("Failed to deserialize json", e);;
+
+            @Override
+            public JsonStringDeserializer<T> withKeyDeserializer(Class<?> type, KeyDeserializer keyDeserializer)
+            {
+                SimpleModule simpleModule = new SimpleModule();
+                simpleModule.addKeyDeserializer(type, keyDeserializer);
+                this.objectMapper.registerModule(simpleModule);
+                return this;
+            }
 
             @Override
             public T apply(String data)
@@ -712,6 +965,20 @@ public class JSONHelper
                     // ignore
                 }
             }
+
+            @Override
+            public JsonReaderArrayDeserializer<T> forArray()
+            {
+                return new JsonReaderArrayDeserializer<T>()
+                {
+                    @SuppressWarnings("unchecked")
+                    @Override
+                    public Stream<T> apply(Reader reader)
+                    {
+                        return (Stream<T>) readArrayFromReader(reader, type);
+                    }
+                };
+            }
         };
     }
 
@@ -724,7 +991,7 @@ public class JSONHelper
     @SuppressWarnings("unchecked")
     public static <E> E clone(E element)
     {
-        return (E) new ObjectMapper().convertValue(element, element.getClass());
+        return (E) cloner().apply(element);
     }
 
     /**
@@ -732,9 +999,57 @@ public class JSONHelper
      * 
      * @return
      */
-    public static <E> UnaryOperator<E> cloner()
+    @SuppressWarnings("unchecked")
+    public static <E> JsonCloner<E> cloner()
     {
-        return element -> clone(element);
+        return (JsonCloner<E>) cloner(Object.class);
+    }
+
+    public static <E> JsonCloner<E> cloner(Class<E> type)
+    {
+        return new JsonCloner<E>()
+        {
+            private ObjectMapper objectMapper = new ObjectMapper();
+
+            @Override
+            public E apply(E element)
+            {
+                return Optional.ofNullable(element)
+                               .map(e -> this.objectMapper.convertValue(e, this.determineEffectiveType(element)))
+                               .orElse(null);
+            }
+
+            @SuppressWarnings("unchecked")
+            private Class<E> determineEffectiveType(E element)
+            {
+                return type != Object.class ? type : (Class<E>) element.getClass();
+            }
+
+            @Override
+            public JsonCloner<E> usingKeyDeserializer(Class<?> type, KeyDeserializer keyDeserializer)
+            {
+                SimpleModule simpleModule = new SimpleModule();
+                simpleModule.addKeyDeserializer(type, keyDeserializer);
+                this.objectMapper.registerModule(simpleModule);
+                return this;
+            }
+
+            @Override
+            public <K> JsonCloner<E> usingKeySerializer(Class<K> type, JsonSerializer<K> keySerializer)
+            {
+                SimpleModule simpleModule = new SimpleModule();
+                simpleModule.addKeySerializer(type, keySerializer);
+                this.objectMapper.registerModule(simpleModule);
+                return this;
+            }
+        };
+    }
+
+    public static interface JsonCloner<E> extends UnaryOperator<E>
+    {
+        public JsonCloner<E> usingKeyDeserializer(Class<?> type, KeyDeserializer keyDeserializer);
+
+        public <K> JsonCloner<E> usingKeySerializer(Class<K> type, JsonSerializer<K> keySerializer);
     }
 
     /**
@@ -790,5 +1105,19 @@ public class JSONHelper
                 return this;
             }
         };
+    }
+
+    /**
+     * Returns an {@link Optional} that contains the given {@link JsonNode} instance, if it is from type {@link ArrayNode}. Otherwise {@link Optional#empty()}
+     * is returned.
+     * 
+     * @param node
+     * @return
+     */
+    public static Optional<ArrayNode> toArrayNode(JsonNode node)
+    {
+        return Optional.ofNullable(node)
+                       .filter(arrayNode -> arrayNode instanceof ArrayNode)
+                       .map(arrayNode -> (ArrayNode) arrayNode);
     }
 }
