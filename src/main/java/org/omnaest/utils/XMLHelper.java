@@ -39,6 +39,7 @@ import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Consumer;
 import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -75,11 +76,12 @@ public class XMLHelper
 
     private static final class XMLParserImpl implements XMLParserLoadedWithSaxPreParser, XMLParserLoaded
     {
-        private Reader             reader;
-        private XMLNameSpaceFilter nameSpaceFilter;
-        private boolean            namespaces        = true;
-        private boolean            namespacePrefixes = true;
-        private boolean            usingSAXParser    = false;
+        private Reader                       reader;
+        private XMLNameSpaceFilter           nameSpaceFilter;
+        private boolean                      namespaces             = true;
+        private boolean                      namespacePrefixes      = true;
+        private boolean                      usingSAXParser         = false;
+        private List<Consumer<Unmarshaller>> unmarshallerConfigurer = new ArrayList<>();
 
         private XMLParserImpl(Reader reader)
         {
@@ -137,6 +139,8 @@ public class XMLHelper
                     //
                     JAXBContext jaxbContext = JAXBContext.newInstance(type);
                     Unmarshaller unmarshaller = jaxbContext.createUnmarshaller();
+
+                    this.unmarshallerConfigurer.forEach(consumer -> consumer.accept(unmarshaller));
 
                     //
                     if (JAXBElement.class.isAssignableFrom(type))
@@ -217,7 +221,6 @@ public class XMLHelper
     public static interface XMLParserLoadedBase
     {
         public <T> T into(Class<T> type);
-
     }
 
     public static interface XMLParserLoaded extends XMLParserLoadedBase

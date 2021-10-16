@@ -582,6 +582,8 @@ public class JSONHelper
         public JsonStringSerializer<T> withExceptionHandler(Consumer<Exception> exceptionHandler);
 
         public JsonByteArraySerializer<T> asByteArraySerializer();
+
+        public <K> JsonStringSerializer<T> withKeySerializer(Class<K> type, JsonSerializer<K> keySerializer);
     }
 
     /**
@@ -738,6 +740,15 @@ public class JSONHelper
                         return applyWithExecutor(object, objectWriterExecutor);
                     }
                 };
+            }
+
+            @Override
+            public <K> JsonStringSerializer<T> withKeySerializer(Class<K> type, JsonSerializer<K> keySerializer)
+            {
+                SimpleModule simpleModule = new SimpleModule();
+                simpleModule.addKeySerializer(type, keySerializer);
+                this.objectMapper.registerModule(simpleModule);
+                return this;
             }
         };
     }
@@ -1035,7 +1046,7 @@ public class JSONHelper
             }
 
             @Override
-            public <K> JsonCloner<E> usingKeySerializer(Class<K> type, JsonSerializer<K> keySerializer)
+            public <K> JsonCloner<E> withKeySerializer(Class<K> type, JsonSerializer<K> keySerializer)
             {
                 SimpleModule simpleModule = new SimpleModule();
                 simpleModule.addKeySerializer(type, keySerializer);
@@ -1049,7 +1060,7 @@ public class JSONHelper
     {
         public JsonCloner<E> usingKeyDeserializer(Class<?> type, KeyDeserializer keyDeserializer);
 
-        public <K> JsonCloner<E> usingKeySerializer(Class<K> type, JsonSerializer<K> keySerializer);
+        public <K> JsonCloner<E> withKeySerializer(Class<K> type, JsonSerializer<K> keySerializer);
     }
 
     /**
