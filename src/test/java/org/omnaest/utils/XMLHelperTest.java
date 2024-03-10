@@ -36,54 +36,54 @@ package org.omnaest.utils;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 
-import javax.xml.bind.JAXBElement;
-import javax.xml.bind.annotation.XmlAccessType;
-import javax.xml.bind.annotation.XmlAccessorType;
-import javax.xml.bind.annotation.XmlAttribute;
-import javax.xml.bind.annotation.XmlRootElement;
-
 import org.junit.Test;
+
+import jakarta.xml.bind.JAXBElement;
+import jakarta.xml.bind.annotation.XmlAccessType;
+import jakarta.xml.bind.annotation.XmlAccessorType;
+import jakarta.xml.bind.annotation.XmlAttribute;
+import jakarta.xml.bind.annotation.XmlRootElement;
 
 public class XMLHelperTest
 {
 
-	@Test
-	public void testParse() throws Exception
-	{
-		String xml = "<input>test</input>";
-		JAXBElement<?> element = XMLHelper.parse(xml, JAXBElement.class);
-		//		System.out.println(XMLHelper.serializer()
-		//									.withoutHeader()
-		//									.serialize(element));
-		assertNotNull(element);
-	}
+    @Test
+    public void testParse() throws Exception
+    {
+        String xml = "<input>test</input>";
+        JAXBElement<?> element = XMLHelper.parse(xml, JAXBElement.class);
+        //		System.out.println(XMLHelper.serializer()
+        //									.withoutHeader()
+        //									.serialize(element));
+        assertNotNull(element);
+    }
 
-	@XmlRootElement
-	@XmlAccessorType(XmlAccessType.NONE)
-	public static class Domain
-	{
-		@XmlAttribute
-		private String attr;
+    @XmlRootElement
+    @XmlAccessorType(XmlAccessType.NONE)
+    public static class Domain
+    {
+        @XmlAttribute
+        private String attr;
 
-		public String getAttr()
-		{
-			return this.attr;
-		}
+        public String getAttr()
+        {
+            return this.attr;
+        }
 
-		public void setAttr(String attr)
-		{
-			this.attr = attr;
-		}
+        public void setAttr(String attr)
+        {
+            this.attr = attr;
+        }
 
-	}
+    }
 
-	@Test
-	public void testParseDomain()
-	{
-		String xml = "<domain attr=\"value\"></domain>";
-		Domain element = XMLHelper.parse(xml, Domain.class);
-		assertNotNull(element);
-		assertEquals("value", element.getAttr());
-	}
+    @Test
+    public void testParseDomain()
+    {
+        String xml = "<domain attr=\"value\"></domain>";
+        Domain element = XMLHelper.parse(xml, Domain.class);
+        assertNotNull(element);
+        assertEquals("value", element.getAttr());
+    }
 
 }
