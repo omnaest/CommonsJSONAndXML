@@ -13,24 +13,7 @@
  * License for the specific language governing permissions and limitations under
  * the License.
  ******************************************************************************/
-/*
 
-	Copyright 2017 Danny Kunz
-
-	Licensed under the Apache License, Version 2.0 (the "License");
-	you may not use this file except in compliance with the License.
-	You may obtain a copy of the License at
-
-		http://www.apache.org/licenses/LICENSE-2.0
-
-	Unless required by applicable law or agreed to in writing, software
-	distributed under the License is distributed on an "AS IS" BASIS,
-	WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-	See the License for the specific language governing permissions and
-	limitations under the License.
-
-
-*/
 package org.omnaest.utils;
 
 import java.io.IOException;
@@ -46,9 +29,6 @@ import java.util.function.Function;
 import java.util.function.UnaryOperator;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.core.JsonGenerator.Feature;
@@ -69,15 +49,11 @@ import com.fasterxml.jackson.databind.module.SimpleModule;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.type.TypeFactory;
 
-/**
- * @deprecated please use {@link JsonUtils} instead
- * @author omnaest
- */
-@Deprecated
-public class JSONHelper
-{
-    private static final Logger LOG = LoggerFactory.getLogger(JSONHelper.class);
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
+public class JsonUtils
+{
     /**
      * @see #serialize(Object)
      * @param object
@@ -127,7 +103,7 @@ public class JSONHelper
         //        }
         //        catch (Exception e)
         //        {
-        //            LOG.debug("Exception serializing object into json" + object, e);
+        //            LOGGER.debug("Exception serializing object into json" + object, e);
         //            throw new IllegalStateException(e);
         //        }
         //        return retval;
@@ -179,7 +155,7 @@ public class JSONHelper
         }
         catch (Exception e)
         {
-            LOG.debug("Exception serializing object into json" + object, e);
+            LOGGER.debug("Exception serializing object into json" + object, e);
             throw new IllegalStateException(e);
         }
     }
@@ -218,7 +194,7 @@ public class JSONHelper
                             }
                             catch (Exception e)
                             {
-                                LOG.debug("Exception serializing array object into json " + object, e);
+                                LOGGER.debug("Exception serializing array object into json " + object, e);
                                 throw new IllegalStateException(e);
                             }
                         });
@@ -238,7 +214,7 @@ public class JSONHelper
         }
         catch (Exception e)
         {
-            LOG.debug("Exception serializing array into json", e);
+            LOGGER.debug("Exception serializing array into json", e);
             throw new IllegalStateException(e);
         }
     }
@@ -299,7 +275,7 @@ public class JSONHelper
             }
             catch (Exception e)
             {
-                LOG.debug("Exception serializing object into json" + object, e);
+                LOGGER.debug("Exception serializing object into json" + object, e);
                 throw new JSONSerializationException(e);
             }
         };
@@ -511,7 +487,7 @@ public class JSONHelper
         }
         catch (Exception e)
         {
-            LOG.error("Exception deserializing into json", e);
+            LOGGER.error("Exception deserializing into json", e);
             throw new IllegalStateException(e);
         }
         return retval;
@@ -701,7 +677,7 @@ public class JSONHelper
                 }
                 catch (Exception e)
                 {
-                    LOG.debug("Exception serializing object into json" + object, e);
+                    LOGGER.debug("Exception serializing object into json" + object, e);
                     Optional.ofNullable(this.exceptionHandler)
                             .ifPresent(handler -> handler.accept(e));
                 }
@@ -782,7 +758,7 @@ public class JSONHelper
             @Override
             public void accept(T object, Writer writer)
             {
-                JSONHelper.serialize(object, writer, true);
+                serialize(object, writer, true);
             }
 
             @Override
@@ -871,7 +847,7 @@ public class JSONHelper
         {
             private ObjectMapper                         objectMapper     = new ObjectMapper();
             private Function<ObjectMapper, ObjectReader> writerResolver   = om -> om.readerFor(typeFunction.apply(TypeFactory.defaultInstance()));
-            private Consumer<Exception>                  exceptionHandler = e -> LOG.warn("Failed to deserialize json", e);;
+            private Consumer<Exception>                  exceptionHandler = e -> LOGGER.warn("Failed to deserialize json", e);;
 
             @Override
             public JsonStringDeserializer<T> withKeyDeserializer(Class<?> type, KeyDeserializer keyDeserializer)
@@ -911,7 +887,7 @@ public class JSONHelper
                     }
                     catch (Exception e)
                     {
-                        LOG.debug("Exception deserializing json into object" + data, e);
+                        LOGGER.debug("Exception deserializing json into object" + data, e);
                         Optional.ofNullable(this.exceptionHandler)
                                 .ifPresent(handler -> handler.accept(e));
                     }
@@ -965,7 +941,7 @@ public class JSONHelper
             @Override
             public T apply(Reader reader)
             {
-                T value = (T) JSONHelper.readFromReader(reader, type);
+                T value = (T) readFromReader(reader, type);
                 this.closeReader(reader);
                 return value;
             }
