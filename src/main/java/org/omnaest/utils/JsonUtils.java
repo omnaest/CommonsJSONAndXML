@@ -354,8 +354,7 @@ public class JsonUtils
                                            throw new IllegalStateException("Content must contain a JSON array on root level");
                                        }
 
-                                       Iterable<T> iterable = () -> new Iterator<T>()
-                                       {
+                                       Iterable<T> iterable = () -> new Iterator<T>() {
                                            private AtomicReference<JsonToken> token = new AtomicReference<>();
 
                                            @Override
@@ -546,6 +545,31 @@ public class JsonUtils
     }
 
     /**
+     * Similar to {@link #toObjectWithType(Object, Class)} where the target type is {@link JsonNode}.
+     * 
+     * @param object
+     * @return
+     */
+    public static JsonNode toJsonNode(Object object)
+    {
+        return toObjectWithType(object, JsonNode.class);
+    }
+
+    /**
+     * Returns an {@link Optional} that contains the given {@link JsonNode} instance, if it is from type {@link ArrayNode}. Otherwise {@link Optional#empty()}
+     * is returned.
+     * 
+     * @param node
+     * @return
+     */
+    public static Optional<ArrayNode> toArrayNode(JsonNode node)
+    {
+        return Optional.ofNullable(node)
+                       .filter(arrayNode -> arrayNode instanceof ArrayNode)
+                       .map(arrayNode -> (ArrayNode) arrayNode);
+    }
+
+    /**
      * {@link Function} which does use {@link JSONHelper#prettyPrint(Object)}
      * 
      * @author omnaest
@@ -644,8 +668,7 @@ public class JsonUtils
      */
     public static <T> JsonStringSerializer<T> serializer()
     {
-        return new JsonStringSerializer<T>()
-        {
+        return new JsonStringSerializer<T>() {
             private ObjectMapper                         objectMapper   = new ObjectMapper();
             private Function<ObjectMapper, ObjectWriter> writerResolver = om -> om.writer();
             private Consumer<Exception>                  exceptionHandler;
@@ -701,8 +724,7 @@ public class JsonUtils
             @Override
             public JsonByteArraySerializer<T> asByteArraySerializer()
             {
-                return new JsonByteArraySerializer<T>()
-                {
+                return new JsonByteArraySerializer<T>() {
 
                     @Override
                     public byte[] apply(T object)
@@ -753,8 +775,7 @@ public class JsonUtils
      */
     public static <T> JsonWriterSerializer<T> writerSerializer(Class<? super T> type)
     {
-        return new JsonWriterSerializer<T>()
-        {
+        return new JsonWriterSerializer<T>() {
             @Override
             public void accept(T object, Writer writer)
             {
@@ -765,8 +786,7 @@ public class JsonUtils
             public JsonWriterSerializerWithWriter<T> withWriter(Writer writer)
             {
                 JsonWriterSerializer<T> serializer = this;
-                return new JsonWriterSerializerWithWriter<T>()
-                {
+                return new JsonWriterSerializerWithWriter<T>() {
                     @Override
                     public void accept(T object)
                     {
@@ -779,8 +799,7 @@ public class JsonUtils
             public JsonWriterSerializerWithObject<T> wrapObject(T object)
             {
                 JsonWriterSerializer<T> serializer = this;
-                return new JsonWriterSerializerWithObject<T>()
-                {
+                return new JsonWriterSerializerWithObject<T>() {
                     @Override
                     public void accept(Writer writer)
                     {
@@ -792,8 +811,7 @@ public class JsonUtils
             @Override
             public JsonWriterArraySerializer<T> forArray()
             {
-                return new JsonWriterArraySerializer<T>()
-                {
+                return new JsonWriterArraySerializer<T>() {
                     @Override
                     public void accept(Stream<T> stream, Writer writer)
                     {
@@ -843,8 +861,7 @@ public class JsonUtils
 
     public static <T> JsonStringDeserializer<T> deserializer(Function<TypeFactory, JavaType> typeFunction)
     {
-        return new JsonStringDeserializer<T>()
-        {
+        return new JsonStringDeserializer<T>() {
             private ObjectMapper                         objectMapper     = new ObjectMapper();
             private Function<ObjectMapper, ObjectReader> writerResolver   = om -> om.readerFor(typeFunction.apply(TypeFactory.defaultInstance()));
             private Consumer<Exception>                  exceptionHandler = e -> LOGGER.warn("Failed to deserialize json", e);;
@@ -905,8 +922,7 @@ public class JsonUtils
             @Override
             public JsonByteArrayDeserializer<T> asByteArrayDeserializer()
             {
-                return new JsonByteArrayDeserializer<T>()
-                {
+                return new JsonByteArrayDeserializer<T>() {
                     @Override
                     public T apply(byte[] data)
                     {
@@ -935,8 +951,7 @@ public class JsonUtils
      */
     public static <T> JsonReaderDeserializer<T> readerDeserializer(Class<? super T> type)
     {
-        return new JsonReaderDeserializer<T>()
-        {
+        return new JsonReaderDeserializer<T>() {
             @SuppressWarnings("unchecked")
             @Override
             public T apply(Reader reader)
@@ -961,8 +976,7 @@ public class JsonUtils
             @Override
             public JsonReaderArrayDeserializer<T> forArray()
             {
-                return new JsonReaderArrayDeserializer<T>()
-                {
+                return new JsonReaderArrayDeserializer<T>() {
                     @SuppressWarnings("unchecked")
                     @Override
                     public Stream<T> apply(Reader reader)
@@ -999,8 +1013,7 @@ public class JsonUtils
 
     public static <E> JsonCloner<E> cloner(Class<E> type)
     {
-        return new JsonCloner<E>()
-        {
+        return new JsonCloner<E>() {
             private ObjectMapper objectMapper = new ObjectMapper();
 
             @Override
@@ -1075,8 +1088,7 @@ public class JsonUtils
     {
         JsonStringSerializer<T> serializer = serializer();
         JsonStringDeserializer<T> deserializer = deserializer(typeFunction);
-        return new JsonStringConverter<T>()
-        {
+        return new JsonStringConverter<T>() {
             @Override
             public JsonStringSerializer<T> serializer()
             {
@@ -1099,17 +1111,4 @@ public class JsonUtils
         };
     }
 
-    /**
-     * Returns an {@link Optional} that contains the given {@link JsonNode} instance, if it is from type {@link ArrayNode}. Otherwise {@link Optional#empty()}
-     * is returned.
-     * 
-     * @param node
-     * @return
-     */
-    public static Optional<ArrayNode> toArrayNode(JsonNode node)
-    {
-        return Optional.ofNullable(node)
-                       .filter(arrayNode -> arrayNode instanceof ArrayNode)
-                       .map(arrayNode -> (ArrayNode) arrayNode);
-    }
 }

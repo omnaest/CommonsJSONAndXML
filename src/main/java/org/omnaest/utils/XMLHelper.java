@@ -240,8 +240,7 @@ public class XMLHelper
 
     public static XMLParser parse()
     {
-        return new XMLParser()
-        {
+        return new XMLParser() {
 
             @Override
             public XMLParserLoaded from(String xml)
@@ -297,8 +296,7 @@ public class XMLHelper
      */
     public static Serializer serializer()
     {
-        return new Serializer()
-        {
+        return new Serializer() {
             private boolean        renderHeader = true;
             private boolean        prettyPrint  = true;
             private List<Class<?>> rootTypes    = new ArrayList<>();
