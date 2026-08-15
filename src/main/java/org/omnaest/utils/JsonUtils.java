@@ -56,11 +56,16 @@ import lombok.extern.slf4j.Slf4j;
 public class JsonUtils
 {
     /**
-     * Shared {@link ObjectMapper} for the paths that do not need a per-call configured mapper: the plain
+     * Shared {@link ObjectMapper} backing every path in this class: the plain
      * {@link ObjectMapper#convertValue(Object, Class)} conversions ({@link #toObjectWithType(Object, Class)},
-     * {@link #toObjectWithType(Map, Class)} and therefore {@link #toMap(Object)}), the {@link ObjectWriter}
-     * derived by {@link #serialize(Object, Writer, boolean)}, and every read routed through
-     * {@link #readJson(Function)}.
+     * {@link #toObjectWithType(Map, Class)} and therefore {@link #toMap(Object)}), every read routed through
+     * {@link #readJson(Function)}, the {@link ObjectWriter}/{@link JsonGenerator} views derived by
+     * {@link #serialize(Object, Writer, boolean)}, {@code serializeArray(Stream, Writer, boolean)} and
+     * {@code prepareAsPrettyPrintWriterConsumer(Object)} - and, as of plan-125 (2026-08-15), {@link #serializer()},
+     * {@code deserializer(Function)} and {@code cloner(Class)} as well, and therefore every method that reaches
+     * them: {@link #serialize(Object)}, {@link #serialize(Object, boolean)}, {@link #prettyPrint(Object)},
+     * {@link #clone(Object)}, {@code converter(...)}, and the pretty/typed {@code serializer(Class, boolean)}
+     * overloads.
      * <p>
      * These previously constructed a fresh {@code new ObjectMapper()} on every single call.
      * {@link ObjectMapper} is expensive to build - it initialises annotation introspection, a root-name
@@ -72,11 +77,19 @@ public class JsonUtils
      * payload was empty.
      * <p>
      * Never reconfigure this instance - no {@code enable}/{@code disable}/{@code registerModule} calls on it -
-     * since a static mapper is shared by every caller in the JVM and such a change would leak globally.
-     * Per-call tuning has to be expressed either by deriving an immutable {@link ObjectWriter}/
-     * {@link ObjectReader} from it, as {@link #serialize(Object, Writer, boolean)} does, or by building a
-     * local mapper - which is why pretty-printing, custom (de)serialization features and module registration
-     * elsewhere in this class still construct their own.
+     * since a static mapper is shared by every caller in the JVM and such a change would leak globally. This
+     * warning is now load-bearing for far more of this class than when it was first written: {@link #serializer()},
+     * {@code deserializer(Function)} and {@code cloner(Class)} all expose module-registering mutators
+     * ({@code withKeySerializer}, {@code withKeyDeserializer}, {@code usingKeyDeserializer}), and every one of
+     * them honours the invariant by copy-on-mutate rather than by building its own mapper - the returned
+     * serializer/deserializer/cloner instance starts out pointing at this very field, and only swaps itself onto
+     * a private {@link ObjectMapper#copy()} the first time one of those mutators is actually called, registering
+     * the module on that private copy, never on this instance. The overwhelmingly common unconfigured path (no
+     * key (de)serializer registered) therefore still pays zero extra allocation beyond reading this field. Every
+     * remaining per-call tuning need - pretty-printing, the array-writing generator, the closing writer consumer -
+     * is expressed by deriving an immutable {@link ObjectWriter}/{@link ObjectReader}/{@link JsonGenerator} view
+     * from this instance, as {@link #serialize(Object, Writer, boolean)} already did and the others now do too;
+     * none of them constructs an {@code ObjectMapper} of its own.
      */
     private static final ObjectMapper SHARED_OBJECT_MAPPER = new ObjectMapper();
 
@@ -175,9 +188,9 @@ public class JsonUtils
     {
         try
         {
-            ObjectMapper objectMapper = new ObjectMapper().configure(SerializationFeature.INDENT_OUTPUT, pretty);
+            ObjectWriter objectWriter = pretty ? SHARED_OBJECT_MAPPER.writerWithDefaultPrettyPrinter() : SHARED_OBJECT_MAPPER.writer();
 
-            try (JsonGenerator jsonGenerator = objectMapper.createGenerator(writer)
+            try (JsonGenerator jsonGenerator = objectWriter.createGenerator(writer)
                                                            .disable(Feature.AUTO_CLOSE_TARGET))
             {
                 jsonGenerator.writeStartArray();
@@ -188,7 +201,7 @@ public class JsonUtils
                         {
                             try
                             {
-                                objectMapper.writeValue(jsonGenerator, object);
+                                objectWriter.writeValue(jsonGenerator, object);
                             }
                             catch (Exception e)
                             {
@@ -256,11 +269,10 @@ public class JsonUtils
         {
             try
             {
-                ObjectMapper objectMapper = new ObjectMapper();
-                objectMapper.enable(SerializationFeature.INDENT_OUTPUT);
-                objectMapper.enable(SerializationFeature.CLOSE_CLOSEABLE);
+                ObjectWriter objectWriter = SHARED_OBJECT_MAPPER.writerWithDefaultPrettyPrinter()
+                                                                .with(SerializationFeature.CLOSE_CLOSEABLE);
 
-                objectMapper.writeValue(writer, object);
+                objectWriter.writeValue(writer, object);
 
                 try
                 {
@@ -409,7 +421,7 @@ public class JsonUtils
          * whose update function has to be side effect free because it may be reapplied - while this one
          * advanced the {@link JsonParser}.
          */
-        private JsonToken peekedToken;
+        private JsonToken          peekedToken;
 
         private JsonArrayIterator(JsonParser jsonParser, ObjectMapper objectMapper, Class<T> type)
         {
@@ -726,7 +738,7 @@ public class JsonUtils
     public static <T> JsonStringSerializer<T> serializer()
     {
         return new JsonStringSerializer<T>() {
-            private ObjectMapper                         objectMapper   = new ObjectMapper();
+            private ObjectMapper                         objectMapper   = SHARED_OBJECT_MAPPER;
             private Function<ObjectMapper, ObjectWriter> writerResolver = om -> om.writer();
             private Consumer<Exception>                  exceptionHandler;
 
@@ -805,6 +817,10 @@ public class JsonUtils
             @Override
             public <K> JsonStringSerializer<T> withKeySerializer(Class<K> type, JsonSerializer<K> keySerializer)
             {
+                if (this.objectMapper == SHARED_OBJECT_MAPPER)
+                {
+                    this.objectMapper = SHARED_OBJECT_MAPPER.copy();
+                }
                 SimpleModule simpleModule = new SimpleModule();
                 simpleModule.addKeySerializer(type, keySerializer);
                 this.objectMapper.registerModule(simpleModule);
@@ -939,13 +955,17 @@ public class JsonUtils
     public static <T> JsonStringDeserializer<T> deserializer(Function<TypeFactory, JavaType> typeFunction)
     {
         return new JsonStringDeserializer<T>() {
-            private ObjectMapper                         objectMapper     = new ObjectMapper();
-            private Function<ObjectMapper, ObjectReader> writerResolver   = om -> om.readerFor(typeFunction.apply(TypeFactory.defaultInstance()));
+            private ObjectMapper                         objectMapper     = SHARED_OBJECT_MAPPER;
+            private Function<ObjectMapper, ObjectReader> readerResolver   = om -> om.readerFor(typeFunction.apply(TypeFactory.defaultInstance()));
             private Consumer<Exception>                  exceptionHandler = e -> LOGGER.warn("Failed to deserialize json", e);
 
             @Override
             public JsonStringDeserializer<T> withKeyDeserializer(Class<?> type, KeyDeserializer keyDeserializer)
             {
+                if (this.objectMapper == SHARED_OBJECT_MAPPER)
+                {
+                    this.objectMapper = SHARED_OBJECT_MAPPER.copy();
+                }
                 SimpleModule simpleModule = new SimpleModule();
                 simpleModule.addKeyDeserializer(type, keyDeserializer);
                 this.objectMapper.registerModule(simpleModule);
@@ -976,7 +996,7 @@ public class JsonUtils
                 {
                     try
                     {
-                        retval = this.writerResolver.andThen(objectReaderExecutor)
+                        retval = this.readerResolver.andThen(objectReaderExecutor)
                                                     .apply(this.objectMapper);
                     }
                     catch (Exception e)
@@ -1091,7 +1111,7 @@ public class JsonUtils
     public static <E> JsonCloner<E> cloner(Class<E> type)
     {
         return new JsonCloner<E>() {
-            private ObjectMapper objectMapper = new ObjectMapper();
+            private ObjectMapper objectMapper = SHARED_OBJECT_MAPPER;
 
             @Override
             public E apply(E element)
@@ -1110,6 +1130,10 @@ public class JsonUtils
             @Override
             public JsonCloner<E> usingKeyDeserializer(Class<?> type, KeyDeserializer keyDeserializer)
             {
+                if (this.objectMapper == SHARED_OBJECT_MAPPER)
+                {
+                    this.objectMapper = SHARED_OBJECT_MAPPER.copy();
+                }
                 SimpleModule simpleModule = new SimpleModule();
                 simpleModule.addKeyDeserializer(type, keyDeserializer);
                 this.objectMapper.registerModule(simpleModule);
@@ -1119,6 +1143,10 @@ public class JsonUtils
             @Override
             public <K> JsonCloner<E> withKeySerializer(Class<K> type, JsonSerializer<K> keySerializer)
             {
+                if (this.objectMapper == SHARED_OBJECT_MAPPER)
+                {
+                    this.objectMapper = SHARED_OBJECT_MAPPER.copy();
+                }
                 SimpleModule simpleModule = new SimpleModule();
                 simpleModule.addKeySerializer(type, keySerializer);
                 this.objectMapper.registerModule(simpleModule);
